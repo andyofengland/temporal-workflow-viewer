@@ -1,0 +1,15 @@
+@TemporalDashboard.Api_HostAddress = http://localhost:8001
+
+### Get all discovered workflows
+GET {{TemporalDashboard.Api_HostAddress}}/api/workflows
+Accept: application/json
+
+### Get upload info
+GET {{TemporalDashboard.Api_HostAddress}}/api/upload/info
+Accept: application/json
+
+### Get workflow diagrams for a DLL (replace {dllName} with actual DLL filename)
+# GET {{TemporalDashboard.Api_HostAddress}}/api/workflows/{dllName}/diagrams
+# Accept: application/json
+
+###

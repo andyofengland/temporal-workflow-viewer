@@ -1,0 +1,85 @@
+@page "/"
+@using Microsoft.AspNetCore.Components.Web
+@namespace TemporalDashboard.Web.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="~/" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link href="css/site.css" rel="stylesheet" />
+    <link href="TemporalDashboard.Web.styles.css" rel="stylesheet" />
+    <link rel="icon" type="image/png" href="favicon.png"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" crossorigin="anonymous" />
+    <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+</head>
+<body>
+    <component type="typeof(App)" render-mode="ServerPrerendered" />
+
+    <div id="blazor-error-ui">
+        <environment include="Staging,Production">
+            An error has occurred. This application may no longer respond until reloaded.
+        </environment>
+        <environment include="Development">
+            An unhandled exception has occurred. See browser dev tools for details.
+        </environment>
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <script src="_framework/blazor.server.js"></script>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: { useMaxWidth: true, htmlLabels: true }
+        });
+        window.mermaid = mermaid;
+
+        function isMermaidNodeVisible(node) {
+            const pane = node.closest('.tab-pane');
+            if (!pane) return true;
+            return pane.classList.contains('show');
+        }
+
+        window.renderMermaidDiagrams = async function () {
+            const allNodes = document.querySelectorAll('.mermaid:not([data-mermaid-processed])');
+            const visibleNodes = Array.from(allNodes).filter(isMermaidNodeVisible);
+            for (const node of visibleNodes) {
+                node.setAttribute('data-mermaid-processed', 'true');
+                try {
+                    await mermaid.run({ nodes: [node], suppressErrors: true });
+                } catch (err) {
+                    console.error('Mermaid render error:', err);
+                    node.removeAttribute('data-mermaid-processed');
+                }
+            }
+            return true;
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => window.renderMermaidDiagrams(), 300);
+        });
+
+        document.addEventListener('shown.bs.tab', function () {
+            setTimeout(() => window.renderMermaidDiagrams(), 50);
+        });
+
+        window.copyToClipboard = function (text) {
+            return navigator.clipboard && navigator.clipboard.writeText(text);
+        };
+
+        window.highlightCode = function () {
+            if (typeof Prism !== 'undefined') Prism.highlightAll();
+        };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js" crossorigin="anonymous"></script>
+</body>
+</html>

@@ -1,0 +1,173 @@
+@page "/workflows"
+@using TemporalDashboard.Web.Services
+@using TemporalDashboard.Web.Models
+@using Microsoft.JSInterop
+@inject ApiClient ApiClient
+@inject ILogger<Workflows> Logger
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Workflows</PageTitle>
+
+<h1>Discovered Workflows</h1>
+
+@if (isLoading)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger" role="alert">
+        @errorMessage
+    </div>
+}
+else if (workflows == null || !workflows.Any())
+{
+    <div class="alert alert-info" role="alert">
+        No workflows found. Please upload a zip file containing workflow DLLs.
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            <h5>Workflows (@workflows.Count)</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Workflow</th>
+                            <th>Diagram name</th>
+                            <th>Assembly</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var wf in workflows)
+                        {
+                            <tr>
+                                <td>@wf.WorkflowName</td>
+                                <td>@(string.IsNullOrWhiteSpace(wf.DisplayName) ? "—" : wf.DisplayName)</td>
+                                <td>@wf.DllName</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" @onclick="() => ShowDiagram(wf)">View</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (selectedWorkflow != null && selectedDiagram != null)
+{
+    var codeId = $"mermaid-code-{selectedWorkflow.WorkflowName.GetHashCode() & 0x7FFFFFFF}";
+    <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-start">
+            <div>
+                <h5 class="mb-1">@(string.IsNullOrWhiteSpace(selectedWorkflow.DisplayName) ? selectedWorkflow.WorkflowName : selectedWorkflow.DisplayName)</h5>
+                <p class="text-muted small mb-0">Contained in assembly: <strong>@selectedWorkflow.DllName</strong></p>
+            </div>
+            <button class="btn btn-sm btn-secondary" @onclick="CloseDiagram">Close</button>
+        </div>
+        <div class="card-body">
+            <div class="diagram-block">
+                <p class="text-muted small mb-2">@selectedDiagram.FullName</p>
+                <div class="diagram-container border rounded p-3 bg-white mb-2">
+                    <div class="mermaid">@selectedDiagram.MermaidDiagram</div>
+                </div>
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#@codeId" aria-expanded="false" aria-controls="@codeId">Show / hide Mermaid code</button>
+                    <div class="collapse mt-2" id="@codeId">
+                        <pre class="mermaid-code-block bg-dark text-light p-3 rounded small mb-0"><code>@selectedDiagram.MermaidDiagram</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<WorkflowInfo>? workflows;
+    private bool isLoading = true;
+    private string? errorMessage;
+    private WorkflowInfo? selectedWorkflow;
+    private WorkflowTypeInfo? selectedDiagram;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWorkflows();
+    }
+
+    private async Task LoadWorkflows()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            workflows = await ApiClient.GetWorkflowsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading workflows");
+            errorMessage = $"Error loading workflows: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private bool _pendingMermaidRender;
+
+    private async Task ShowDiagram(WorkflowInfo wf)
+    {
+        selectedWorkflow = wf;
+        selectedDiagram = null;
+        _pendingMermaidRender = false;
+        errorMessage = null;
+
+        try
+        {
+            selectedDiagram = await ApiClient.GetWorkflowDiagramAsync(wf.DllName, wf.WorkflowName);
+            _pendingMermaidRender = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading diagram for {WorkflowName} in {DllName}", wf.WorkflowName, wf.DllName);
+            errorMessage = $"Could not load diagram: {ex.Message}";
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingMermaidRender && selectedDiagram != null)
+        {
+            _pendingMermaidRender = false;
+            try
+            {
+                await Task.Delay(100);
+                await JSRuntime.InvokeVoidAsync("renderMermaidDiagrams");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to render Mermaid diagram");
+            }
+        }
+    }
+
+    private void CloseDiagram()
+    {
+        selectedWorkflow = null;
+        selectedDiagram = null;
+    }
+}

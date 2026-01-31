@@ -1,0 +1,14 @@
+# Override file for local development
+# This file is automatically used by docker-compose
+
+services:
+  api:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      # Mount local uploads folder for easier access during development
+      - ./uploads:/app/uploads
+
+  web:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development

@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: ./src
+      dockerfile: TemporalDashboard.Api/Dockerfile
+    container_name: temporal-dashboard-api
+    ports:
+      - "8001:8080"
+      - "8002:8081"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - UploadsPath=/app/uploads
+    volumes:
+      - uploads-data:/app/uploads
+    networks:
+      - temporal-dashboard-network
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./src
+      dockerfile: TemporalDashboard.Web/Dockerfile
+    container_name: temporal-dashboard-web
+    ports:
+      - "8000:8080"
+      - "8003:8081"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ApiBaseUrl=http://api:8080
+    depends_on:
+      - api
+    networks:
+      - temporal-dashboard-network
+    restart: unless-stopped
+
+volumes:
+  uploads-data:
+    driver: local
+
+networks:
+  temporal-dashboard-network:
+    driver: bridge

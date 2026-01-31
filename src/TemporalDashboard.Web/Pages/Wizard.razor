@@ -1,0 +1,146 @@
+@page "/wizard"
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Mermaid to Workflow Wizard</PageTitle>
+
+<div class="wizard-page">
+    <h1 class="mb-3">Mermaid to Workflow Wizard</h1>
+    <p class="lead text-muted mb-4">
+        Paste a Mermaid flowchart below and generate a compilable C# workflow class with the diagram annotations applied. 
+        The output is a minimal workflow that matches your diagram; you can then fix namespaces and implement the real logic.
+    </p>
+
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <label class="form-label fw-bold">Mermaid flowchart</label>
+            <textarea @bind="mermaidInput"
+                      @bind:event="oninput"
+                      class="form-control font-monospace"
+                      rows="18"
+                      placeholder="Paste your Mermaid flowchart here, or click Load example below."></textarea>
+            <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
+                <button type="button" class="btn btn-primary" @onclick="Generate" disabled="@(string.IsNullOrWhiteSpace(mermaidInput))">
+                    Generate C# Workflow
+                </button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="LoadExample">
+                    Load example
+                </button>
+                <div class="form-check mb-0">
+                    <input type="checkbox" class="form-check-input" id="showOptions" @bind="showOptions" />
+                    <label class="form-check-label" for="showOptions">Class name &amp; namespace</label>
+                </div>
+            </div>
+            @if (showOptions)
+            {
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <label class="form-label small">Class name</label>
+                            <input type="text" class="form-control form-control-sm" @bind="className" placeholder="GeneratedWorkflow" />
+                        </div>
+                        <div>
+                            <label class="form-label small">Namespace</label>
+                            <input type="text" class="form-control form-control-sm" @bind="namespaceName" placeholder="YourNamespace.YourProject" />
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="col-lg-6 mb-4">
+            <label class="form-label fw-bold">Generated C#</label>
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger small">@errorMessage</div>
+            }
+            @if (!string.IsNullOrEmpty(generatedCode))
+            {
+                <div class="position-relative" @key="_generationKey">
+                    <pre class="code-block bg-dark text-light p-3 rounded mb-0"><code class="language-csharp" id="generated-code">@generatedCode</code></pre>
+                    <button type="button" class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-2" @onclick="CopyToClipboard" title="Copy to clipboard">
+                        Copy
+                    </button>
+                </div>
+                <p class="small text-muted mt-2 mb-0">
+                    Add this class to your project, fix the namespace, and implement method bodies as needed. The workflow structure and annotations match your Mermaid diagram.
+                </p>
+            }
+            else if (string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="border rounded p-4 text-muted text-center bg-light">
+                    <p class="mb-0">Generated C# will appear here after you paste a Mermaid flowchart and click Generate.</p>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <strong>Supported Mermaid syntax</strong>: <code>flowchart TD</code> or <code>LR</code>, node definitions like <code>id["label"]</code>, <code>id(["label"])</code> (stadium), <code>id{"label"}</code> (diamond), and edges <code>A --> B</code> or <code>A -->|label| B</code>. 
+        Nodes with no incoming edges (or named &quot;Start&quot;) become the start; nodes with no outgoing edges become end nodes; diamonds or nodes with multiple outgoing edges become decisions.
+    </div>
+</div>
+
+@code {
+    private string mermaidInput = "";
+    private string generatedCode = "";
+    private string errorMessage = "";
+    private bool showOptions = false;
+    private string className = "GeneratedWorkflow";
+    private string namespaceName = "YourNamespace.YourProject";
+    private int _generationKey;
+
+    private void Generate()
+    {
+        errorMessage = "";
+        generatedCode = "";
+        try
+        {
+            var (success, err) = MermaidToWorkflowGenerator.ValidateAndGetError(mermaidInput);
+            if (!success)
+            {
+                errorMessage = err ?? "Invalid input.";
+                return;
+            }
+            generatedCode = MermaidToWorkflowGenerator.Generate(mermaidInput, className, namespaceName);
+            _generationKey++;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private void LoadExample()
+    {
+        mermaidInput = @"flowchart TD
+    Start([Begin])
+    Step1[""Process Data""]
+    Step2[""Validate""]
+    End([Complete])
+    Start --> Step1
+    Step1 --> Step2
+    Step2 --> End";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!string.IsNullOrEmpty(generatedCode))
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("highlightCode");
+            }
+            catch { /* Prism may not be loaded */ }
+        }
+    }
+
+    private async Task CopyToClipboard()
+    {
+        if (string.IsNullOrEmpty(generatedCode)) return;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("copyToClipboard", generatedCode);
+        }
+        catch { /* clipboard may be unavailable */ }
+    }
+}

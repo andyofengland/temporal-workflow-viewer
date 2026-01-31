@@ -1,0 +1,165 @@
+@page "/upload"
+@using TemporalDashboard.Web.Services
+@using TemporalDashboard.Web.Models
+@inject ApiClient ApiClient
+@inject ILogger<Upload> Logger
+
+<PageTitle>Upload Workflows</PageTitle>
+
+<h1>Upload Workflow DLLs</h1>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Upload Zip File</h5>
+        <p class="card-text">Upload a zip file containing workflow DLLs. Only DLLs that contain Temporal workflows are saved, each in a folder named after the assembly.</p>
+        
+        <div class="mb-3">
+            <label class="form-label">Select Zip File</label>
+            <InputFile OnChange="HandleFileSelected" class="form-control" accept=".zip" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(uploadStatus))
+        {
+            <div class="alert @(isError ? "alert-danger" : "alert-success")" role="alert">
+                @uploadStatus
+            </div>
+        }
+
+        @if (isUploading)
+        {
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Uploading...</span>
+            </div>
+        }
+
+        @if (showOverwritePrompt && existingAssemblies?.Count > 0)
+        {
+            <div class="alert alert-warning" role="alert">
+                <strong>These workflow assemblies already exist:</strong>
+                <ul class="mb-2">
+                    @foreach (var name in existingAssemblies)
+                    {
+                        <li>@name</li>
+                    }
+                </ul>
+                <p class="mb-2">Do you want to overwrite them?</p>
+                <div>
+                    <button type="button" class="btn btn-warning me-2" @onclick="ConfirmOverwrite">Overwrite</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelOverwrite">Cancel</button>
+                </div>
+            </div>
+        }
+
+        @if (uploadResult != null)
+        {
+            <div class="alert alert-success">
+                <strong>Upload successful.</strong><br />
+                File: @uploadResult.FileName<br />
+                @if (uploadResult.SavedAssemblies?.Count > 0)
+                {
+                    <text>Saved assembly folder(s): <strong>@string.Join(", ", uploadResult.SavedAssemblies)</strong><br /></text>
+                }
+                @if (uploadResult.WorkflowCount > 0)
+                {
+                    <text>Workflows discovered: <strong>@uploadResult.WorkflowCount</strong></text>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string uploadStatus = string.Empty;
+    private bool isError = false;
+    private bool isUploading = false;
+    private UploadResponse? uploadResult;
+    private bool showOverwritePrompt;
+    private IReadOnlyList<string>? existingAssemblies;
+    private IBrowserFile? pendingFile;
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        if (!file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            uploadStatus = "Please select a zip file.";
+            isError = true;
+            return;
+        }
+
+        isUploading = true;
+        uploadStatus = "Uploading...";
+        isError = false;
+        uploadResult = null;
+        showOverwritePrompt = false;
+        existingAssemblies = null;
+        pendingFile = null;
+
+        try
+        {
+            await DoUpload(file, overwrite: false);
+        }
+        catch (UploadConflictException ex)
+        {
+            existingAssemblies = ex.ExistingAssemblies;
+            pendingFile = file;
+            showOverwritePrompt = true;
+            uploadStatus = "One or more assemblies already exist. Choose to overwrite or cancel.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error uploading file");
+            uploadStatus = $"Error: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private async Task DoUpload(IBrowserFile file, bool overwrite)
+    {
+        using var stream = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+        uploadResult = await ApiClient.UploadZipFileAsync(stream, file.Name, overwrite);
+        uploadStatus = uploadResult.SavedAssemblies?.Count > 0
+            ? $"Saved {uploadResult.SavedAssemblies.Count} assembly folder(s), {uploadResult.WorkflowCount} workflow(s)."
+            : "Upload completed.";
+        isError = false;
+    }
+
+    private async Task ConfirmOverwrite()
+    {
+        if (pendingFile == null) return;
+        isUploading = true;
+        showOverwritePrompt = false;
+        existingAssemblies = null;
+        var file = pendingFile;
+        pendingFile = null;
+        try
+        {
+            await DoUpload(file, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error uploading file with overwrite");
+            uploadStatus = $"Error: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private void CancelOverwrite()
+    {
+        showOverwritePrompt = false;
+        existingAssemblies = null;
+        pendingFile = null;
+        uploadStatus = "Upload cancelled.";
+    }
+}

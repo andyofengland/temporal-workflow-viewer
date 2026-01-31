@@ -1,0 +1,246 @@
+@page "/guide"
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Workflow Diagram Annotations Guide</PageTitle>
+
+<div class="annotations-guide">
+    <h1 class="mb-4">Workflow Diagram Annotations Guide</h1>
+
+    <div class="alert alert-light border mb-4">
+        <p class="mb-0">
+            <strong>In brief:</strong> Add special markers (attributes) to your Temporal workflow code so this dashboard can draw a diagram of the workflow automatically. 
+            You mark the workflow itself, each step, and how steps connect. No separate diagram file is needed.
+        </p>
+    </div>
+
+    <section class="mb-5">
+        <h2>Overview</h2>
+        <p>
+            Workflows in this dashboard are discovered from .NET assemblies. To generate a diagram, the workflow class and its steps are decorated with attributes 
+            from <code>TemporalDashboard.WorkflowDiagramming.Attributes</code>. The dashboard reads these at runtime and produces a Mermaid flowchart.
+        </p>
+        <div class="alert alert-info">
+            <strong>For business users:</strong> Think of attributes as labels you attach to the workflow and to each step. 
+            The labels describe the step name, the type (e.g. “decision” or “approval”), and which step comes next. The dashboard uses that to draw the flow.
+        </div>
+    </section>
+
+    <section class="mb-5">
+        <h2>Getting Started</h2>
+        <p>Add these namespaces at the top of your workflow file:</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">using Temporalio.Workflows;
+using TemporalDashboard.WorkflowDiagramming.Attributes;</code></pre>
+        <p class="mt-3">Then apply attributes to the workflow class and to the method that runs the workflow (the <em>run</em> method).</p>
+        <div class="alert alert-warning">
+            <span class="badge bg-warning text-dark me-2">Technical</span>
+            The run method must be the one marked with <code>[WorkflowRun]</code> from Temporal. The diagram start node is attached to that method via <code>[WorkflowStart]</code>.
+        </div>
+    </section>
+
+    <section class="mb-5">
+        <h2>1. Mark the Workflow and Its Start</h2>
+        <p>On the workflow class, use <code>[Workflow]</code> (Temporal) and <code>[WorkflowDiagram]</code>. On the run method, use <code>[WorkflowRun]</code> and <code>[WorkflowStart]</code>.</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">[Workflow]
+[WorkflowDiagram(DisplayName = "Customer Onboarding", Direction = "TD")]
+public class CustomerOnboardingWorkflow
+{
+    [WorkflowRun]
+    [WorkflowStart("Begin Onboarding")]
+    public async Task&lt;Result&gt; RunAsync(Request request) => await ExecuteAsync(request);
+}</code></pre>
+        <ul class="mt-2">
+            <li><strong>DisplayName</strong> — Shown in the UI; use a business-friendly name.</li>
+            <li><strong>Direction</strong> — <code>TD</code> (top-down), <code>LR</code> (left-right), <code>TB</code>, <code>BT</code>.</li>
+        </ul>
+    </section>
+
+    <section class="mb-5">
+        <h2>2. Mark Each Step</h2>
+        <p>Use <code>[WorkflowStep]</code> on methods (or a dedicated “steps” method) with a unique <strong>id</strong>, a <strong>label</strong>, and an <strong>order</strong> number.</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">[WorkflowStep("validate", "Validate Request", 1)]
+private async Task ValidateRequest() { }
+
+[WorkflowStep("process", "Process Data", 2)]
+private async Task ProcessData() { }
+
+[WorkflowStep("notify", "Send Notification", 3, IsAiPowered = true)]
+private async Task NotifyWithAI() { }</code></pre>
+        <div class="alert alert-secondary">
+            <strong>Technical:</strong> <code>WorkflowStep(id, label, order)</code>. Optional: <code>StepType</code> (Activity, Decision, HumanApproval, Start, End), <code>Description</code>, <code>IsAiPowered</code>, <code>IsSuccess</code>, <code>IsFailure</code>.
+        </div>
+    </section>
+
+    <section class="mb-5">
+        <h2>3. Connect Steps with Transitions</h2>
+        <p>Use <code>[WorkflowTransition(fromId, toId)]</code> to define arrows between steps. You can put several on one method. The start node ID is <code>"Start"</code> (capital S).</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">[WorkflowTransition("Start", "validate")]
+[WorkflowTransition("validate", "process")]
+[WorkflowTransition("process", "notify")]
+[WorkflowTransition("notify", "end")]
+public void Transitions() { }</code></pre>
+        <div class="alert alert-info">
+            <strong>For business users:</strong> Each transition is “from this step, the flow can go to that step.” Labels are optional (e.g. “Yes” / “No” on branches).
+        </div>
+    </section>
+
+    <section class="mb-5">
+        <h2>4. Decisions and Branches</h2>
+        <p>For a decision point, use <code>[WorkflowDecision]</code> on the decision step. Use <code>[WorkflowBranch]</code> (not <code>WorkflowTransition</code>) for each outcome.</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">[WorkflowDecision("check", "Is Eligible?", 2)]
+private async Task&lt;bool&gt; CheckEligibility() => true;
+
+[WorkflowBranch("check", "Yes", "process")]
+[WorkflowBranch("check", "No", "rejected", IsFailurePath = true)]
+public void DecisionBranches() { }</code></pre>
+        <div class="alert alert-warning">
+            <span class="badge bg-warning text-dark me-2">Technical</span>
+            Do not use <code>[WorkflowTransition]</code> from a decision node; use only <code>[WorkflowBranch]</code> so the diagram renders the decision correctly.
+        </div>
+    </section>
+
+    <section class="mb-5">
+        <h2>5. Human Approval and End Steps</h2>
+        <p>Use <code>[WorkflowHumanApproval]</code> for steps that require a person, and <code>[WorkflowEnd]</code> for success/failure outcomes.</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">[WorkflowHumanApproval("approval", "Manager Approval", 4,
+    Description = "Requires manager sign-off",
+    Timeout = "24 hours",
+    ApproverRole = "Line Manager")]
+private async Task RequestApproval() { }
+
+[WorkflowEnd("approved", "Approved", true)]
+private void Approved() { }
+
+[WorkflowEnd("rejected", "Rejected", false)]
+private void Rejected() { }</code></pre>
+    </section>
+
+    <section class="mb-5">
+        <h2>Complete Example: Linear Workflow</h2>
+        <p>A minimal workflow with start, two steps, and an end. Good template to copy and adapt.</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">using Temporalio.Workflows;
+using TemporalDashboard.WorkflowDiagramming.Attributes;
+
+[Workflow]
+[WorkflowDiagram(Direction = "TD")]
+public class SimpleLinearWorkflow
+{
+    [WorkflowRun]
+    [WorkflowStart("Begin")]
+    public Task&lt;string&gt; RunAsync() => Task.FromResult("Done");
+
+    [WorkflowStep("Step1", "Process Data", 1)]
+    public void ProcessData() { }
+
+    [WorkflowStep("Step2", "Validate Result", 2)]
+    public void ValidateResult() { }
+
+    [WorkflowTransition("Start", "Step1")]
+    [WorkflowTransition("Step1", "Step2")]
+    [WorkflowTransition("Step2", "End")]
+    public void Transitions() { }
+
+    [WorkflowEnd("End", "Complete", true)]
+    public void End() { }
+}</code></pre>
+    </section>
+
+    <section class="mb-5">
+        <h2>Complete Example: Workflow with Decision</h2>
+        <p>Uses a decision node and branches instead of transitions from the decision.</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">[Workflow]
+[WorkflowDiagram(Direction = "LR")]
+public class DecisionWorkflow
+{
+    [WorkflowRun]
+    [WorkflowStart]
+    public Task&lt;string&gt; RunAsync() => Task.FromResult("Done");
+
+    [WorkflowStep("Step1", "Initial Step", 1)]
+    public void InitialStep() { }
+
+    [WorkflowDecision("Decision1", "Is Valid?", 2)]
+    public void CheckValidity() { }
+
+    [WorkflowBranch("Decision1", "Yes", "Step2")]
+    [WorkflowBranch("Decision1", "No", "ErrorEnd", IsFailurePath = true)]
+    public void DecisionBranches() { }
+
+    [WorkflowStep("Step2", "Process Valid Data", 3)]
+    public void ProcessValid() { }
+
+    [WorkflowTransition("Start", "Step1")]
+    [WorkflowTransition("Step1", "Decision1")]
+    public void Transitions() { }
+
+    [WorkflowEnd("End", "Success", true)]
+    public void SuccessEnd() { }
+
+    [WorkflowEnd("ErrorEnd", "Error", false)]
+    public void ErrorEnd() { }
+}</code></pre>
+    </section>
+
+    <section class="mb-5">
+        <h2>Best Practices</h2>
+        <ul>
+            <li><strong>Unique IDs</strong> — Every step needs a unique <code>id</code>; transitions and branches refer to these IDs.</li>
+            <li><strong>Order</strong> — Use sequential order numbers (1, 2, 3…) so the diagram layout matches the flow.</li>
+            <li><strong>Start</strong> — In transitions, the start node ID must be exactly <code>"Start"</code> (capital S).</li>
+            <li><strong>Decisions</strong> — Use <code>[WorkflowBranch]</code> for paths out of a decision; do not use <code>[WorkflowTransition]</code> from decision nodes.</li>
+            <li><strong>Labels</strong> — Use clear, business-friendly labels for steps and branches so the diagram is readable for non-developers.</li>
+            <li><strong>AI steps</strong> — Set <code>IsAiPowered = true</code> on steps that use AI/ML so they are styled distinctly in the diagram.</li>
+        </ul>
+    </section>
+
+    <section class="mb-5">
+        <h2>Quick Checklist</h2>
+        <ul class="list-unstyled">
+            <li class="mb-1">☐ <code>using TemporalDashboard.WorkflowDiagramming.Attributes;</code></li>
+            <li class="mb-1">☐ <code>[WorkflowDiagram]</code> on the workflow class</li>
+            <li class="mb-1">☐ <code>[WorkflowStart]</code> on the <code>[WorkflowRun]</code> method</li>
+            <li class="mb-1">☐ <code>[WorkflowStep]</code> (or Decision / HumanApproval / End) on each step</li>
+            <li class="mb-1">☐ <code>[WorkflowTransition]</code> for all step-to-step links</li>
+            <li class="mb-1">☐ <code>[WorkflowBranch]</code> for decision outcomes (not Transition)</li>
+            <li class="mb-1">☐ <code>[WorkflowEnd]</code> on completion methods</li>
+            <li class="mb-1">☐ Unique IDs and correct <code>"Start"</code> in transitions</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2>Attribute Reference (Summary)</h2>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Attribute</th>
+                        <th>Where</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>WorkflowDiagram</code></td><td>Class</td><td>Display name, diagram direction</td></tr>
+                    <tr><td><code>WorkflowStart</code></td><td>Run method</td><td>Start node label</td></tr>
+                    <tr><td><code>WorkflowStep</code></td><td>Method/class</td><td>Step id, label, order; optional type, AI, success/failure</td></tr>
+                    <tr><td><code>WorkflowDecision</code></td><td>Method</td><td>Decision id, label, order</td></tr>
+                    <tr><td><code>WorkflowHumanApproval</code></td><td>Method</td><td>Approval step with description, timeout, role</td></tr>
+                    <tr><td><code>WorkflowEnd</code></td><td>Method</td><td>End id, label, success/failure</td></tr>
+                    <tr><td><code>WorkflowTransition</code></td><td>Method</td><td>From step → to step (and optional label)</td></tr>
+                    <tr><td><code>WorkflowBranch</code></td><td>Method</td><td>From decision → target step; use for decisions only</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("highlightCode");
+        }
+        catch { /* Prism may not be loaded yet */ }
+    }
+}

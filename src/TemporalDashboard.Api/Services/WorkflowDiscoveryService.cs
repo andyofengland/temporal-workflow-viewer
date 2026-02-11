@@ -40,6 +40,8 @@ public class WorkflowDiscoveryService
 {
     private readonly string _uploadsPath;
     private readonly ILogger<WorkflowDiscoveryService> _logger;
+    private readonly object _cacheLock = new();
+    private List<WorkflowInfo>? _workflowsCache;
 
     public WorkflowDiscoveryService(IConfiguration configuration, ILogger<WorkflowDiscoveryService> logger)
     {
@@ -56,11 +58,31 @@ public class WorkflowDiscoveryService
     public string GetUploadsPath() => _uploadsPath;
 
     /// <summary>
+    /// Invalidates any in-memory cache so that the next discovery or diagram request will load assemblies from disk.
+    /// Call this after uploading or replacing workflow DLLs.
+    /// </summary>
+    public void InvalidateCache()
+    {
+        lock (_cacheLock)
+        {
+            _workflowsCache = null;
+        }
+        _logger.LogDebug("Workflow discovery cache invalidated.");
+    }
+
+    /// <summary>
     /// Discovers all workflow types from DLLs in the uploads folder.
     /// Only loads the DLL whose name matches each folder (e.g. uploads/Foo/Foo.dll) to avoid duplicate workflows from dependency DLLs copied into multiple folders.
+    /// Results are cached until <see cref="InvalidateCache"/> is called (e.g. after an upload).
     /// </summary>
     public List<WorkflowInfo> DiscoverWorkflows()
     {
+        lock (_cacheLock)
+        {
+            if (_workflowsCache != null)
+                return new List<WorkflowInfo>(_workflowsCache);
+        }
+
         var workflows = new List<WorkflowInfo>();
         if (!Directory.Exists(_uploadsPath))
             return workflows;
@@ -81,6 +103,10 @@ public class WorkflowDiscoveryService
             }
         }
 
+        lock (_cacheLock)
+        {
+            _workflowsCache = new List<WorkflowInfo>(workflows);
+        }
         return workflows;
     }
 

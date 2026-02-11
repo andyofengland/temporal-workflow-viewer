@@ -112,6 +112,8 @@ public class UploadController : ControllerBase
 
             CleanupTemp(tempZipPath, tempExtractPath);
 
+            _discoveryService.InvalidateCache();
+
             _logger.LogInformation("Saved {AssemblyCount} workflow assembly folder(s) from {FileName}, {WorkflowCount} workflow(s).",
                 folderNames.Count, file.FileName, workflowCount);
 

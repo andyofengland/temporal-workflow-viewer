@@ -1,10 +1,27 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>TemporalDashboard.WorkflowDiagramming</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Temporal Dashboard</Authors>
+    <Company>Temporal Dashboard</Company>
+    <Description>Attributes and Mermaid diagram generator for Temporal .NET workflows. Annotate workflow types with [WorkflowDiagram], [WorkflowStep], [WorkflowTransition], etc., and generate flowchart diagrams at runtime or build time.</Description>
+    <PackageTags>temporal;workflow;mermaid;diagram;dotnet</PackageTags>
+    <PackageProjectUrl>https://github.com/andynightingale/temporal-workflow-viewer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/andynightingale/temporal-workflow-viewer</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Temporalio" Version="1.9.0" />

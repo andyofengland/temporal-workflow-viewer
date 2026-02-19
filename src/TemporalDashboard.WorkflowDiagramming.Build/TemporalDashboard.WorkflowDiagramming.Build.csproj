@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Description>MSBuild task to generate Mermaid workflow diagrams at build time from Temporal workflow assemblies. Add this package to your workflow project; the build task runs after Build and writes .mermaid files to $(OutputPath)diagrams.</Description>
+    <PackageId>TemporalDashboard.WorkflowDiagramming.Build</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Temporal Dashboard</Authors>
+    <Company>Temporal Dashboard</Company>
+    <PackageTags>temporal;workflow;mermaid;diagram;msbuild;build;dotnet</PackageTags>
+    <PackageProjectUrl>https://github.com/andynightingale/temporal-workflow-viewer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/andynightingale/temporal-workflow-viewer</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <DevelopmentDependency>true</DevelopmentDependency>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="TemporalDashboard.WorkflowDiagramming.Build.targets" Pack="true" PackagePath="build/$(PackageId).targets" />
+  </ItemGroup>
+
+  <!-- Include dependency DLLs in lib so the task loads when only this package is installed (main DLL is packed by SDK) -->
+  <Target Name="IncludeTaskDependencyDlls" BeforeTargets="GenerateNuspec">
+    <ItemGroup>
+      <_TaskDepDlls Include="$(OutputPath)*.dll" Exclude="$(OutputPath)TemporalDashboard.WorkflowDiagramming.Build.dll" />
+      <None Include="@(_TaskDepDlls)" Pack="true" PackagePath="lib/$(TargetFramework)/%(Filename)%(Extension)" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.0.2" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TemporalDashboard.WorkflowDiagramming\TemporalDashboard.WorkflowDiagramming.csproj" />
+  </ItemGroup>
+
+</Project>

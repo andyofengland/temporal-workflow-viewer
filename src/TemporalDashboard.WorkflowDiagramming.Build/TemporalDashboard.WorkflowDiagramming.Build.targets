@@ -18,7 +18,10 @@
     <GenerateWorkflowDiagramsTask
       AssemblyPath="$(OutputPath)$(AssemblyName).dll"
       OutputPath="$(OutputPath)diagrams"
-      FileExtension=".mermaid" />
+      FileExtension=".mermaid"
+      TargetFramework="$(TargetFramework)"
+      Language="C#"
+      CreateZip="true" />
   </Target>
 
 </Project>

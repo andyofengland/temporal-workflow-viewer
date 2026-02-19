@@ -7,7 +7,7 @@ Adds the Temporal Dashboard workflow diagramming NuGet packages to your project 
 **When you add the packages:**
 
 - **TemporalDashboard.WorkflowDiagramming** – gives you the attributes (`[WorkflowDiagram]`, `[WorkflowStep]`, etc.) and the diagram generator for your workflow code.
-- **TemporalDashboard.WorkflowDiagramming.Build** – brings in an MSBuild target that runs after `Build` and writes one `.mermaid` file per workflow to `$(OutputPath)diagrams/`. NuGet imports the target automatically; no manual `.targets` or `Import` is required.
+- **TemporalDashboard.WorkflowDiagramming.Build** – brings in an MSBuild target that runs after `Build` and writes to `$(OutputPath)diagrams/`: one `.mermaid` file per workflow, a `workflow-diagrams-metadata.json` (assembly, framework, build date, workflow list), and a `workflow-diagrams.zip` containing all of them for easy sharing. NuGet imports the target automatically; no manual `.targets` or `Import` is required.
 
 **Usage:**
 
@@ -32,8 +32,8 @@ From a directory that contains a single `.csproj` (your workflow project):
 **After running:**
 
 1. Build your project: `dotnet build`
-2. Check `bin/<Configuration>/net10.0/diagrams/` for `<WorkflowName>.mermaid` files.
-3. Use the generated Mermaid in docs, CI, or a viewer without shipping your workflow DLL.
+2. In `bin/<Configuration>/net10.0/diagrams/` you get: `<WorkflowName>.mermaid` files, `workflow-diagrams-metadata.json`, and `workflow-diagrams.zip` (all diagrams + metadata for sharing).
+3. Use the generated Mermaid in docs, CI, or a viewer without shipping your workflow DLL; share the zip for distribution.
 
 **Requirements:**
 

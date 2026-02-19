@@ -4,8 +4,11 @@ MSBuild task that generates Mermaid workflow diagrams at **build time** from you
 
 ## Overview
 
-- **Task:** `GenerateWorkflowDiagramsTask` loads your built assembly, discovers types marked with `[Workflow]` and diagramming attributes, and writes one Mermaid file per workflow to an output directory.
-- **Target:** The included `.targets` file runs the task after `Build`, so diagrams are generated automatically when you build your workflow project.
+- **Task:** `GenerateWorkflowDiagramsTask` loads your built assembly, discovers types marked with `[Workflow]` and diagramming attributes, and writes:
+  - One **Mermaid** file per workflow (e.g. `MyWorkflow.mermaid`)
+  - A **JSON metadata** file (`workflow-diagrams-metadata.json`) with assembly name/version, language/framework, build date, and workflow list
+  - A **ZIP** file (`workflow-diagrams.zip`) containing all diagrams and the metadata for easy sharing or distribution
+- **Target:** The included `.targets` file runs the task after `Build`, so these outputs are generated automatically when you build your workflow project.
 
 ## Usage
 
@@ -33,7 +36,10 @@ Or use the install script from this repo (adds both packages and works with a lo
 .\scripts\install-workflow-diagramming-build.ps1 -Project .\src\MyWorkflows\MyWorkflows.csproj -Version 1.0.0
 ```
 
-After adding the package, build your project; `.mermaid` files appear in `bin/<Configuration>/net10.0/diagrams/`.
+After adding the package, build your project. In `bin/<Configuration>/net10.0/diagrams/` you get:
+- `*.mermaid` – one file per workflow
+- `workflow-diagrams-metadata.json` – assembly, framework, build date, workflow list
+- `workflow-diagrams.zip` – all of the above in one archive for sharing
 
 ### Option B: Project reference (e.g. same repo)
 
@@ -60,23 +66,58 @@ Example (if your workflow project is in the same repo, e.g. under `src/MyWorkflo
 <Import Project="..\TemporalDashboard.WorkflowDiagramming.Build\TemporalDashboard.WorkflowDiagramming.Build.targets" />
 ```
 
-3. **Build.** When you run `dotnet build` on your workflow project:
+3. **Build.** When you run `dotnet build` on your workflow project, the `GenerateWorkflowDiagrams` target runs after `Build` and writes to `$(OutputPath)diagrams\`: one `.mermaid` file per workflow, `workflow-diagrams-metadata.json`, and `workflow-diagrams.zip` (all diagrams + metadata).
 
-1. The project builds and produces its DLL.
-2. The `GenerateWorkflowDiagrams` target runs after `Build`.
-3. The task loads that DLL, finds all `[Workflow]` types with diagramming attributes, and writes one `.mermaid` file per workflow to `$(OutputPath)diagrams\`.
-
-Default output: `bin\$(Configuration)\net10.0\diagrams\*.mermaid`.
+Default output folder: `bin\$(Configuration)\net10.0\diagrams\`.
 
 ## Task parameters
 
 You can override the default behaviour by calling the task yourself in a target and setting:
 
-| Parameter       | Description |
-|----------------|-------------|
-| `AssemblyPath` | Full path to the built workflow DLL (required). |
-| `OutputPath`   | Directory for generated files (required). Default in the shipped target: `$(OutputPath)diagrams`. |
-| `FileExtension` | Extension for generated files (e.g. `.mermaid` or `.md`). Default: `.mermaid`. |
+| Parameter        | Description |
+|------------------|-------------|
+| `AssemblyPath`   | Full path to the built workflow DLL (required). |
+| `OutputPath`     | Directory for generated files (required). Default in the shipped target: `$(OutputPath)diagrams`. |
+| `FileExtension`  | Extension for generated diagram files (e.g. `.mermaid` or `.md`). Default: `.mermaid`. |
+| `TargetFramework` | Target framework (e.g. `net10.0`). Optional; included in metadata when set. The default target passes `$(TargetFramework)`. |
+| `Language`      | Language (e.g. `C#`). Optional; included in metadata. Default: `C#`. |
+| `CreateZip`      | When `true` (default), creates `workflow-diagrams.zip` containing all diagrams and the metadata JSON. Set to `false` to skip the zip. |
+
+## Metadata JSON
+
+`workflow-diagrams-metadata.json` includes:
+
+- **assemblyName**, **assemblyVersion**, **assemblyPath** – source assembly
+- **language**, **targetFramework** – e.g. `C#`, `net10.0`
+- **buildDateUtc** – ISO 8601 build timestamp
+- **generator** – task name/version
+- **workflows** – array of `{ name, displayName?, diagramFile }` for each workflow
+
+Example:
+
+```json
+{
+  "assemblyName": "MyWorkflows",
+  "assemblyVersion": "1.0.0.0",
+  "assemblyPath": "/path/to/bin/Release/net10.0/MyWorkflows.dll",
+  "language": "C#",
+  "targetFramework": "net10.0",
+  "buildDateUtc": "2026-01-31T14:30:00.0000000Z",
+  "generator": "TemporalDashboard.WorkflowDiagramming.Build/1.0.0",
+  "workflows": [
+    {
+      "name": "OrderFulfillmentWorkflow",
+      "displayName": "Order Fulfillment",
+      "diagramFile": "OrderFulfillmentWorkflow.mermaid"
+    },
+    {
+      "name": "PaymentWorkflow",
+      "displayName": null,
+      "diagramFile": "PaymentWorkflow.mermaid"
+    }
+  ]
+}
+```
 
 ## Requirements
 

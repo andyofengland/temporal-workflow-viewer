@@ -1,0 +1,99 @@
+# Build, test, package app artifacts, and publish diagramming NuGet packages.
+# On push to main (e.g. after PR merge): build, test, zip API+Web, push NuGet packages.
+# On pull_request to main: build and test only.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal
+
+  package-app:
+    name: Package API and Web
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish API
+        run: dotnet publish src/TemporalDashboard.Api/TemporalDashboard.Api.csproj -c Release -o publish/api --no-self-contained
+
+      - name: Publish Web
+        run: dotnet publish src/TemporalDashboard.Web/TemporalDashboard.Web.csproj -c Release -o publish/web --no-self-contained
+
+      - name: Create zip
+        run: |
+          cd publish
+          zip -r ../temporal-dashboard-api-and-web.zip api web
+          cd ..
+          mv temporal-dashboard-api-and-web.zip publish/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-dashboard-api-and-web
+          path: publish/temporal-dashboard-api-and-web.zip
+
+  nuget-push:
+    name: Pack and push NuGet (diagramming)
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build
+        run: dotnet build -c Release
+
+      - name: Pack WorkflowDiagramming
+        run: dotnet pack src/TemporalDashboard.WorkflowDiagramming/TemporalDashboard.WorkflowDiagramming.csproj -c Release -o nupkg --no-build
+
+      - name: Pack WorkflowDiagramming.Build
+        run: dotnet pack src/TemporalDashboard.WorkflowDiagramming.Build/TemporalDashboard.WorkflowDiagramming.Build.csproj -c Release -o nupkg --no-build
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push nupkg/*.nupkg \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

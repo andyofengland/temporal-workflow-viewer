@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- When consumed from NuGet, targets are in build/ and DLL is in lib/net10.0/. When used via ProjectReference, targets are in project dir and DLL is in bin/Configuration/net10.0/. -->
+  <PropertyGroup>
+    <_WorkflowDiagrammingBuildTaskDir Condition="'$(_WorkflowDiagrammingBuildTaskDir)' == '' and Exists('$(MSBuildThisFileDirectory)../lib/net10.0/TemporalDashboard.WorkflowDiagramming.Build.dll')">$(MSBuildThisFileDirectory)../lib/net10.0/</_WorkflowDiagrammingBuildTaskDir>
+    <_WorkflowDiagrammingBuildTaskDir Condition="'$(_WorkflowDiagrammingBuildTaskDir)' == ''">$(MSBuildThisFileDirectory)bin/$(Configuration)/net10.0/</_WorkflowDiagrammingBuildTaskDir>
+  </PropertyGroup>
+
+  <UsingTask
+    TaskName="TemporalDashboard.WorkflowDiagramming.Build.GenerateWorkflowDiagramsTask"
+    AssemblyFile="$(_WorkflowDiagrammingBuildTaskDir)TemporalDashboard.WorkflowDiagramming.Build.dll" />
+
+  <Target
+    Name="GenerateWorkflowDiagrams"
+    AfterTargets="Build"
+    Condition="Exists('$(OutputPath)$(AssemblyName).dll')">
+    <GenerateWorkflowDiagramsTask
+      AssemblyPath="$(OutputPath)$(AssemblyName).dll"
+      OutputPath="$(OutputPath)diagrams"
+      FileExtension=".mermaid"
+      TargetFramework="$(TargetFramework)"
+      Language="C#"
+      CreateZip="true" />
+  </Target>
+
+</Project>

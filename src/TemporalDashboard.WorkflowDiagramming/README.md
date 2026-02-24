@@ -42,7 +42,9 @@ var mermaidDiagram = WorkflowDiagramGenerator.GenerateMermaidDiagram(typeof(MyWo
 ## Usage
 
 1. Annotate your workflow class and methods with the attributes
-2. Call `WorkflowDiagramGenerator.GenerateMermaidDiagram()` with your workflow type
+2. Either:
+   - **At runtime:** Call `WorkflowDiagramGenerator.GenerateMermaidDiagram()` with your workflow type and render the Mermaid syntax in your UI (e.g., using Mermaid.js), or
+   - **At build time:** Use **TemporalDashboard.WorkflowDiagramming.Build** to generate `.mermaid` files as part of your build so you can ship diagram content without loading the workflow DLL at runtime. See `src/TemporalDashboard.WorkflowDiagramming.Build/README.md`.
 3. Render the Mermaid syntax in your UI (e.g., using Mermaid.js)
 
 ## Dependencies

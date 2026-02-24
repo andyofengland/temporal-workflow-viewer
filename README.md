@@ -19,6 +19,8 @@ A web application for discovering and visualizing [Temporal](https://temporal.io
 
 The dashboard does **not** run or execute workflows; it only inspects workflow types and generates diagrams from metadata (attributes).
 
+**NuGet:** The diagramming library and build task will be published as NuGet packages (`TemporalDashboard.WorkflowDiagramming`, `TemporalDashboard.WorkflowDiagramming.Build`). You can add them to any workflow project; the Build package wires the MSBuild task automatically so diagrams are generated at build time. Use the install script to add both packages in one step—see [scripts/README.md](scripts/README.md).
+
 ---
 
 ## Architecture Overview
@@ -116,6 +118,9 @@ temporalDashboard/
 │   │   ├── Attributes/                           # [WorkflowDiagram], [WorkflowStep], etc.
 │   │   ├── WorkflowDiagramGenerator.cs           # Reflection → Mermaid string
 │   │   └── README.md                             # Library overview
+│   ├── TemporalDashboard.WorkflowDiagramming.Build/  # MSBuild task: generate .mermaid at build time
+│   │   ├── GenerateWorkflowDiagramsTask.cs       # Custom MSBuild task
+│   │   └── TemporalDashboard.WorkflowDiagramming.Build.targets
 │   ├── TemporalDashboard.Api/                    # REST API (upload + workflow discovery)
 │   │   ├── Controllers/                          # UploadController, WorkflowsController
 │   │   ├── Services/                             # WorkflowDiscoveryService (DLL load + reflect)
@@ -154,6 +159,7 @@ temporalDashboard/
 | Project | Purpose |
 |--------|---------|
 | **TemporalDashboard.WorkflowDiagramming** | Defines C# attributes for workflow diagram metadata and generates Mermaid flowchart text from workflow types. No UI or HTTP. |
+| **TemporalDashboard.WorkflowDiagramming.Build** | MSBuild task that runs at build time to generate `.mermaid` files from a workflow assembly so you can ship diagram content without sharing the DLL. See `src/TemporalDashboard.WorkflowDiagramming.Build/README.md`. |
 | **TemporalDashboard.Api** | ASP.NET Core API: upload zip, list workflows, get Mermaid diagrams per DLL. Uses WorkflowDiscoveryService to load DLLs (with isolated load contexts) and call the diagramming library. |
 | **TemporalDashboard.Web** | Blazor Server app: upload page, workflow list, diagram viewer, Learn, Annotations Guide, Mermaid-to-Workflow wizard. Depends on WorkflowDiagramming; calls API via `ApiClient`. |
 | **TemporalDashboard.WorkflowDiagramming.Tests** | Unit tests for attributes and `WorkflowDiagramGenerator`; includes sample workflow classes under `Workflows/`. |
@@ -221,6 +227,23 @@ dotnet test tests/TemporalDashboard.WorkflowDiagramming.Tests/TemporalDashboard.
 
 ---
 
+## CI/CD (GitHub Actions)
+
+The [`.github/workflows/ci.yml`](.github/workflows/ci.yml) workflow runs on **push** and **pull_request** to `main`:
+
+| Trigger        | Build & test | Package API+Web zip | Push to NuGet |
+|----------------|--------------|----------------------|---------------|
+| `pull_request` | ✅           | —                    | —             |
+| `push` to main | ✅           | ✅                   | ✅            |
+
+- **Build and test:** Restore, build in Release, run all tests.
+- **Package app (push only):** Publishes the API and Web projects, zips them as `temporal-dashboard-api-and-web.zip`, and uploads it as a **GitHub Actions artifact**. Download it from the run’s **Summary** page (Artifacts).
+- **NuGet (push only):** Packs `TemporalDashboard.WorkflowDiagramming` and `TemporalDashboard.WorkflowDiagramming.Build`, then pushes them to [NuGet.org](https://www.nuget.org/) (with `--skip-duplicate`).
+
+**Required secret:** For NuGet push to succeed on the main repo, add a repository secret **`NUGET_API_KEY`** with your NuGet.org API key (from [NuGet.org → Account → API Keys](https://www.nuget.org/account/apikeys)).
+
+---
+
 ## Configuration
 
 ### API (`src/TemporalDashboard.Api`)
@@ -265,6 +288,7 @@ Workflows must be annotated with the diagramming attributes to get meaningful di
 - **[WORKFLOW_ATTRIBUTES_GUIDE.md](WORKFLOW_ATTRIBUTES_GUIDE.md)** – How to annotate workflows with `[WorkflowDiagram]`, `[WorkflowStep]`, `[WorkflowTransition]`, etc., and how diagram generation uses them.
 - **[DOCKER.md](DOCKER.md)** – Docker Compose services, ports, environment variables, and common commands.
 - **src/TemporalDashboard.WorkflowDiagramming/README.md** – Overview of the diagramming library and its attributes.
+- **src/TemporalDashboard.WorkflowDiagramming.Build/README.md** – Build-time diagram generation: use the MSBuild task to emit `.mermaid` files when building your workflow project.
 - **src/TemporalDashboard.WorkflowDiagramming/Attributes/ATTRIBUTES_SUMMARY.md** – Short summary of the attribute set and design.
 
 ---

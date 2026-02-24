@@ -6,12 +6,12 @@
 
 <PageTitle>Upload Workflows</PageTitle>
 
-<h1>Upload Workflow DLLs</h1>
+<h1>Upload Workflows</h1>
 
 <div class="card">
     <div class="card-body">
         <h5 class="card-title">Upload Zip File</h5>
-        <p class="card-text">Upload a zip file containing workflow DLLs. Only DLLs that contain Temporal workflows are saved, each in a folder named after the assembly.</p>
+        <p class="card-text">Upload a zip file containing either <strong>workflow DLLs</strong> or a <strong>diagram package</strong> (the <code>workflow-diagrams.zip</code> from the build task: <code>workflow-diagrams-metadata.json</code> plus <code>*.mermaid</code> files). Only valid content is saved; diagram packages are stored by assembly name.</p>
         
         <div class="mb-3">
             <label class="form-label">Select Zip File</label>
@@ -57,7 +57,7 @@
                 File: @uploadResult.FileName<br />
                 @if (uploadResult.SavedAssemblies?.Count > 0)
                 {
-                    <text>Saved assembly folder(s): <strong>@string.Join(", ", uploadResult.SavedAssemblies)</strong><br /></text>
+                    <text>Saved: <strong>@string.Join(", ", uploadResult.SavedAssemblies)</strong><br /></text>
                 }
                 @if (uploadResult.WorkflowCount > 0)
                 {

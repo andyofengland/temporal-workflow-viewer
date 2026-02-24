@@ -1,5 +1,7 @@
 using System.IO.Compression;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using TemporalDashboard.Api.Models;
 using TemporalDashboard.Api.Services;
 
 namespace TemporalDashboard.Api.Controllers;
@@ -45,15 +47,47 @@ public class UploadController : ControllerBase
 
             ExtractZipExcludingJunk(tempZipPath, tempExtractPath);
 
+            // Check for workflow-diagrams-metadata.json (diagrams package from build task)
+            var metadataPath = FindFileRecursive(tempExtractPath, "workflow-diagrams-metadata.json");
+            if (metadataPath != null)
+            {
+                var diagramsResult = await SaveDiagramsPackageAsync(metadataPath, tempExtractPath, file.FileName, overwrite);
+                if (diagramsResult.Conflict)
+                {
+                    CleanupTemp(tempZipPath, tempExtractPath);
+                    return StatusCode(409, new
+                    {
+                        error = "Diagram package already exists",
+                        message = "A diagram package with this assembly name already exists. Choose to overwrite or cancel.",
+                        existingAssemblies = diagramsResult.ExistingNames
+                    });
+                }
+                if (diagramsResult.Saved)
+                {
+                    CleanupTemp(tempZipPath, tempExtractPath);
+                    _discoveryService.InvalidateCache();
+                    _logger.LogInformation("Saved diagram package {AssemblyName} from {FileName}, {WorkflowCount} workflow(s).",
+                        diagramsResult.AssemblyName, file.FileName, diagramsResult.WorkflowCount);
+                    return Ok(new
+                    {
+                        message = "Upload successful. Diagram package (JSON + Mermaid) was saved.",
+                        savedAssemblies = new[] { diagramsResult.AssemblyName },
+                        workflowCount = diagramsResult.WorkflowCount,
+                        fileName = file.FileName,
+                        uploadType = "diagrams"
+                    });
+                }
+            }
+
             var workflowDlls = _discoveryService.GetWorkflowDllInfos(tempExtractPath);
             if (workflowDlls.Count == 0)
             {
                 CleanupTemp(tempZipPath, tempExtractPath);
-                _logger.LogWarning("No workflow-containing DLLs found in {FileName}.", file.FileName);
+                _logger.LogWarning("No workflow-containing DLLs or diagram package found in {FileName}.", file.FileName);
                 return BadRequest(new
                 {
                     error = "No workflows found",
-                    message = "The zip does not contain any DLLs with Temporal workflows. Ensure DLLs have classes marked with [Workflow]."
+                    message = "The zip must contain either (1) workflow-diagrams-metadata.json plus .mermaid files, or (2) DLLs with Temporal workflows ([Workflow] types)."
                 });
             }
 
@@ -201,6 +235,94 @@ public class UploadController : ControllerBase
                 return true;
         }
         return false;
+    }
+
+    private static string? FindFileRecursive(string directory, string fileName)
+    {
+        var path = Path.Combine(directory, fileName);
+        if (System.IO.File.Exists(path))
+            return path;
+        foreach (var dir in Directory.GetDirectories(directory))
+        {
+            var found = FindFileRecursive(dir, fileName);
+            if (found != null)
+                return found;
+        }
+        return null;
+    }
+
+    private async Task<(bool Saved, bool Conflict, string AssemblyName, int WorkflowCount, List<string> ExistingNames)> SaveDiagramsPackageAsync(
+        string metadataPath, string extractPath, string fileName, bool overwrite)
+    {
+        string json;
+        try
+        {
+            json = await System.IO.File.ReadAllTextAsync(metadataPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read metadata at {Path}", metadataPath);
+            return (false, false, string.Empty, 0, new List<string>());
+        }
+
+        WorkflowDiagramsMetadataDto? meta;
+        try
+        {
+            meta = JsonSerializer.Deserialize<WorkflowDiagramsMetadataDto>(json);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse workflow-diagrams-metadata.json");
+            return (false, false, string.Empty, 0, new List<string>());
+        }
+
+        if (meta?.Workflows == null || meta.Workflows.Count == 0)
+            return (false, false, string.Empty, 0, new List<string>());
+
+        var assemblyName = (meta.AssemblyName ?? Path.GetFileName(Path.GetDirectoryName(metadataPath)) ?? "Unknown").Trim();
+        if (string.IsNullOrEmpty(assemblyName))
+            return (false, false, string.Empty, 0, new List<string>());
+
+        var targetFolder = SanitizeFolderName(assemblyName);
+        var diagramsPath = _discoveryService.GetDiagramsPath();
+        var targetPath = Path.Combine(diagramsPath, targetFolder);
+        var existing = Directory.Exists(targetPath);
+        if (existing && !overwrite)
+            return (false, true, assemblyName, meta.Workflows.Count, new List<string> { assemblyName });
+
+        if (existing)
+        {
+            try
+            {
+                Directory.Delete(targetPath, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete existing diagram package {Path}", targetPath);
+                return (false, false, assemblyName, 0, new List<string>());
+            }
+        }
+
+        Directory.CreateDirectory(targetPath);
+        var metadataDest = Path.Combine(targetPath, "workflow-diagrams-metadata.json");
+        System.IO.File.Copy(metadataPath, metadataDest, overwrite: true);
+
+        var metadataDir = Path.GetDirectoryName(metadataPath) ?? extractPath;
+        foreach (var w in meta.Workflows)
+        {
+            if (string.IsNullOrEmpty(w.DiagramFile))
+                continue;
+            var srcPath = Path.Combine(metadataDir, w.DiagramFile);
+            if (!System.IO.File.Exists(srcPath))
+                srcPath = Path.Combine(extractPath, w.DiagramFile);
+            if (System.IO.File.Exists(srcPath))
+            {
+                var destPath = Path.Combine(targetPath, Path.GetFileName(w.DiagramFile));
+                System.IO.File.Copy(srcPath, destPath, overwrite: true);
+            }
+        }
+
+        return (true, false, assemblyName, meta.Workflows.Count, new List<string>());
     }
 
     /// <summary>

@@ -93,8 +93,15 @@ public sealed class GenerateWorkflowDiagramsTask : Microsoft.Build.Utilities.Tas
         Func<AssemblyLoadContext, AssemblyName, Assembly?>? resolveHandler = null;
         try
         {
-            // Ensure the default context can resolve diagramming/Temporal from the task's directory (NuGet package lib folder).
-            // Without this, loading the user's assembly in the ALC can trigger a resolve in the default context that fails.
+            // Preload diagramming and Temporal from the task's directory (NuGet package lib folder) so they're in the default context
+            // before we load the user's assembly. Also register Resolving as a fallback.
+            var diagrammingPath = Path.Combine(taskDir, "TemporalDashboard.WorkflowDiagramming.dll");
+            if (System.IO.File.Exists(diagrammingPath))
+                Assembly.LoadFrom(diagrammingPath);
+            var temporalPath = Path.Combine(taskDir, "Temporalio.dll");
+            if (System.IO.File.Exists(temporalPath))
+                Assembly.LoadFrom(temporalPath);
+
             resolveHandler = (_, name) =>
             {
                 var simpleName = name.Name;

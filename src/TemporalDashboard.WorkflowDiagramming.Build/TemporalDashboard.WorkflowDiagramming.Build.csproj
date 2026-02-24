@@ -23,15 +23,10 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="TemporalDashboard.WorkflowDiagramming.Build.targets" Pack="true" PackagePath="build/$(PackageId).targets" />
+    <!-- Dependency DLLs next to the task so the task can load them from the package lib folder -->
+    <None Include="$(OutputPath)TemporalDashboard.WorkflowDiagramming.dll" Pack="true" PackagePath="lib/$(TargetFramework)/TemporalDashboard.WorkflowDiagramming.dll" Link="TemporalDashboard.WorkflowDiagramming.dll" Visible="false" />
+    <None Include="$(OutputPath)Temporalio.dll" Pack="true" PackagePath="lib/$(TargetFramework)/Temporalio.dll" Link="Temporalio.dll" Visible="false" />
   </ItemGroup>
-
-  <!-- Include dependency DLLs in lib so the task loads when only this package is installed (main DLL is packed by SDK) -->
-  <Target Name="IncludeTaskDependencyDlls" BeforeTargets="GenerateNuspec">
-    <ItemGroup>
-      <_TaskDepDlls Include="$(OutputPath)*.dll" Exclude="$(OutputPath)TemporalDashboard.WorkflowDiagramming.Build.dll" />
-      <None Include="@(_TaskDepDlls)" Pack="true" PackagePath="lib/$(TargetFramework)/%(Filename)%(Extension)" Visible="false" />
-    </ItemGroup>
-  </Target>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" PrivateAssets="all" />

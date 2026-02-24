@@ -89,8 +89,24 @@ public sealed class GenerateWorkflowDiagramsTask : Microsoft.Build.Utilities.Tas
             return false;
         }
 
+        var taskDir = Path.GetDirectoryName(typeof(GenerateWorkflowDiagramsTask).Assembly.Location) ?? string.Empty;
+        Func<AssemblyLoadContext, AssemblyName, Assembly?>? resolveHandler = null;
         try
         {
+            // Ensure the default context can resolve diagramming/Temporal from the task's directory (NuGet package lib folder).
+            // Without this, loading the user's assembly in the ALC can trigger a resolve in the default context that fails.
+            resolveHandler = (_, name) =>
+            {
+                var simpleName = name.Name;
+                if (string.IsNullOrEmpty(simpleName)) return null;
+                if (!simpleName.StartsWith("TemporalDashboard.WorkflowDiagramming", StringComparison.OrdinalIgnoreCase) &&
+                    !simpleName.StartsWith("Temporalio.", StringComparison.OrdinalIgnoreCase))
+                    return null;
+                var dllPath = Path.Combine(taskDir, simpleName + ".dll");
+                return System.IO.File.Exists(dllPath) ? Assembly.LoadFrom(dllPath) : null;
+            };
+            AssemblyLoadContext.Default.Resolving += resolveHandler;
+
             var alc = new IsolatedDllLoadContext(fullAssemblyPath);
             try
             {
@@ -171,6 +187,11 @@ public sealed class GenerateWorkflowDiagramsTask : Microsoft.Build.Utilities.Tas
         {
             Log.LogError("Failed to generate workflow diagrams from {0}: {1}", fullAssemblyPath, ex.Message);
             return false;
+        }
+        finally
+        {
+            if (resolveHandler != null)
+                AssemblyLoadContext.Default.Resolving -= resolveHandler;
         }
     }
 

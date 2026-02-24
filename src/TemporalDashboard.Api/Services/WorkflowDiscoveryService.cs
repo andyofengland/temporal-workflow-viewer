@@ -1,11 +1,13 @@
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Text.Json;
 using TemporalDashboard.WorkflowDiagramming;
 using TemporalDashboard.WorkflowDiagramming.Attributes;
 using Temporalio.Workflows;
 using WorkflowInfo = TemporalDashboard.Api.Models.WorkflowInfo;
 using WorkflowTypeInfo = TemporalDashboard.Api.Models.WorkflowTypeInfo;
 using WorkflowDllInfo = TemporalDashboard.Api.Models.WorkflowDllInfo;
+using WorkflowDiagramsMetadataDto = TemporalDashboard.Api.Models.WorkflowDiagramsMetadataDto;
 
 namespace TemporalDashboard.Api.Services;
 
@@ -38,7 +40,12 @@ internal sealed class IsolatedDllLoadContext : AssemblyLoadContext
 
 public class WorkflowDiscoveryService
 {
+    private const string DiagramsFolderName = "diagrams";
+    private const string MetadataFileName = "workflow-diagrams-metadata.json";
+    private const string DiagramsPackagePrefix = "diagrams-";
+
     private readonly string _uploadsPath;
+    private readonly string _diagramsPath;
     private readonly ILogger<WorkflowDiscoveryService> _logger;
     private readonly object _cacheLock = new();
     private List<WorkflowInfo>? _workflowsCache;
@@ -46,6 +53,7 @@ public class WorkflowDiscoveryService
     public WorkflowDiscoveryService(IConfiguration configuration, ILogger<WorkflowDiscoveryService> logger)
     {
         _uploadsPath = configuration["UploadsPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+        _diagramsPath = Path.Combine(_uploadsPath, DiagramsFolderName);
         _logger = logger;
         
         // Ensure uploads directory exists
@@ -56,6 +64,7 @@ public class WorkflowDiscoveryService
     }
 
     public string GetUploadsPath() => _uploadsPath;
+    public string GetDiagramsPath() => _diagramsPath;
 
     /// <summary>
     /// Invalidates any in-memory cache so that the next discovery or diagram request will load assemblies from disk.
@@ -71,9 +80,9 @@ public class WorkflowDiscoveryService
     }
 
     /// <summary>
-    /// Discovers all workflow types from DLLs in the uploads folder.
-    /// Only loads the DLL whose name matches each folder (e.g. uploads/Foo/Foo.dll) to avoid duplicate workflows from dependency DLLs copied into multiple folders.
+    /// Discovers all workflow types from DLLs in the uploads folder and from diagram packages (JSON + Mermaid) in uploads/diagrams.
     /// Results are cached until <see cref="InvalidateCache"/> is called (e.g. after an upload).
+    /// Diagram packages are exposed with DllName "diagrams-&lt;assemblyName&gt;" so they do not collide with DLL-based uploads.
     /// </summary>
     public List<WorkflowInfo> DiscoverWorkflows()
     {
@@ -87,9 +96,12 @@ public class WorkflowDiscoveryService
         if (!Directory.Exists(_uploadsPath))
             return workflows;
 
+        // From DLL folders (uploads/<AssemblyName>/<AssemblyName>.dll)
         foreach (var folderPath in Directory.GetDirectories(_uploadsPath))
         {
             var folderName = Path.GetFileName(folderPath);
+            if (folderName.Equals(DiagramsFolderName, StringComparison.OrdinalIgnoreCase))
+                continue;
             var mainDllPath = Path.Combine(folderPath, folderName + ".dll");
             if (!File.Exists(mainDllPath) || ShouldSkipAssemblyPath(mainDllPath))
                 continue;
@@ -103,11 +115,51 @@ public class WorkflowDiscoveryService
             }
         }
 
+        // From diagram packages (uploads/diagrams/<assemblyName>/)
+        DiscoverWorkflowsFromDiagramsPackages(workflows);
+
         lock (_cacheLock)
         {
             _workflowsCache = new List<WorkflowInfo>(workflows);
         }
         return workflows;
+    }
+
+    private void DiscoverWorkflowsFromDiagramsPackages(List<WorkflowInfo> workflows)
+    {
+        if (!Directory.Exists(_diagramsPath))
+            return;
+        foreach (var packagePath in Directory.GetDirectories(_diagramsPath))
+        {
+            var metadataPath = Path.Combine(packagePath, MetadataFileName);
+            if (!File.Exists(metadataPath))
+                continue;
+            try
+            {
+                var json = File.ReadAllText(metadataPath);
+                var meta = JsonSerializer.Deserialize<WorkflowDiagramsMetadataDto>(json);
+                if (meta?.Workflows == null || meta.Workflows.Count == 0)
+                    continue;
+                var assemblyName = Path.GetFileName(packagePath);
+                var dllName = DiagramsPackagePrefix + assemblyName;
+                foreach (var w in meta.Workflows)
+                {
+                    workflows.Add(new WorkflowInfo
+                    {
+                        DllName = dllName,
+                        DllPath = packagePath,
+                        WorkflowName = w.Name,
+                        DisplayName = w.DisplayName ?? string.Empty,
+                        FullName = w.Name,
+                        Namespace = string.Empty
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read diagram package metadata from {Path}", metadataPath);
+            }
+        }
     }
 
     /// <summary>
@@ -239,10 +291,16 @@ public class WorkflowDiscoveryService
     }
 
     /// <summary>
-    /// Gets all workflows from a specific DLL. Prefers the DLL in the folder that matches the assembly name (e.g. uploads/Foo/Foo.dll).
+    /// Gets all workflows from a specific DLL or diagram package. dllName may be a DLL identifier (e.g. MyWorkflows) or a diagram package (diagrams-MyWorkflows).
     /// </summary>
     public List<WorkflowTypeInfo> GetWorkflowsFromDll(string dllName)
     {
+        if (dllName.StartsWith(DiagramsPackagePrefix, StringComparison.Ordinal))
+        {
+            var assemblyName = dllName.Substring(DiagramsPackagePrefix.Length);
+            return GetWorkflowsFromDiagramsPackage(assemblyName);
+        }
+
         var assemblyFolderName = Path.GetFileNameWithoutExtension(dllName);
         var preferredPath = Path.Combine(_uploadsPath, assemblyFolderName, dllName);
         var dllPath = File.Exists(preferredPath) && !ShouldSkipAssemblyPath(preferredPath)
@@ -295,8 +353,42 @@ public class WorkflowDiscoveryService
         return workflows;
     }
 
+    private List<WorkflowTypeInfo> GetWorkflowsFromDiagramsPackage(string assemblyName)
+    {
+        var packagePath = Path.Combine(_diagramsPath, SanitizeFolderName(assemblyName));
+        var metadataPath = Path.Combine(packagePath, MetadataFileName);
+        if (!File.Exists(metadataPath))
+            throw new FileNotFoundException($"Diagram package not found: {assemblyName}");
+
+        var json = File.ReadAllText(metadataPath);
+        var meta = JsonSerializer.Deserialize<WorkflowDiagramsMetadataDto>(json);
+        if (meta?.Workflows == null)
+            throw new FileNotFoundException($"Invalid diagram package: {assemblyName}");
+
+        var result = new List<WorkflowTypeInfo>();
+        foreach (var w in meta.Workflows)
+        {
+            var mermaidPath = Path.Combine(packagePath, w.DiagramFile);
+            var mermaid = File.Exists(mermaidPath) ? File.ReadAllText(mermaidPath) : string.Empty;
+            result.Add(new WorkflowTypeInfo
+            {
+                Name = w.Name,
+                FullName = w.Name,
+                Namespace = string.Empty,
+                MermaidDiagram = mermaid
+            });
+        }
+        return result;
+    }
+
+    private static string SanitizeFolderName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Join("_", name.Split(invalid, StringSplitOptions.RemoveEmptyEntries));
+    }
+
     /// <summary>
-    /// Gets a single workflow's diagram by DLL name and workflow type name.
+    /// Gets a single workflow's diagram by DLL/diagram-package name and workflow type name.
     /// </summary>
     public WorkflowTypeInfo GetWorkflowDiagram(string dllName, string workflowName)
     {

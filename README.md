@@ -227,6 +227,23 @@ dotnet test tests/TemporalDashboard.WorkflowDiagramming.Tests/TemporalDashboard.
 
 ---
 
+## CI/CD (GitHub Actions)
+
+The [`.github/workflows/ci.yml`](.github/workflows/ci.yml) workflow runs on **push** and **pull_request** to `main`:
+
+| Trigger        | Build & test | Package API+Web zip | Push to NuGet |
+|----------------|--------------|----------------------|---------------|
+| `pull_request` | ✅           | —                    | —             |
+| `push` to main | ✅           | ✅                   | ✅            |
+
+- **Build and test:** Restore, build in Release, run all tests.
+- **Package app (push only):** Publishes the API and Web projects, zips them as `temporal-dashboard-api-and-web.zip`, and uploads it as a **GitHub Actions artifact**. Download it from the run’s **Summary** page (Artifacts).
+- **NuGet (push only):** Packs `TemporalDashboard.WorkflowDiagramming` and `TemporalDashboard.WorkflowDiagramming.Build`, then pushes them to [NuGet.org](https://www.nuget.org/) (with `--skip-duplicate`).
+
+**Required secret:** For NuGet push to succeed on the main repo, add a repository secret **`NUGET_API_KEY`** with your NuGet.org API key (from [NuGet.org → Account → API Keys](https://www.nuget.org/account/apikeys)).
+
+---
+
 ## Configuration
 
 ### API (`src/TemporalDashboard.Api`)

@@ -10,8 +10,8 @@
     <Authors>Temporal Dashboard</Authors>
     <Company>Temporal Dashboard</Company>
     <PackageTags>temporal;workflow;mermaid;diagram;msbuild;build;dotnet</PackageTags>
-    <PackageProjectUrl>https://github.com/andynightingale/temporal-workflow-viewer</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/andynightingale/temporal-workflow-viewer</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/andyofengland/temporal-workflow-viewer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/andyofengland/temporal-workflow-viewer</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

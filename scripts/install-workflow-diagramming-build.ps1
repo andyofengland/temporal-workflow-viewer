@@ -79,4 +79,4 @@ Write-Host "Done. The build task will run after each build and write .mermaid fi
 Write-Host "  bin/<Configuration>/<TargetFramework>/diagrams/" -ForegroundColor White
 Write-Host ""
 Write-Host "Annotate your workflow types with [WorkflowDiagram], [WorkflowStep], etc. See:" -ForegroundColor Green
-Write-Host "  https://github.com/andynightingale/temporal-workflow-viewer/blob/main/WORKFLOW_ATTRIBUTES_GUIDE.md" -ForegroundColor White
+Write-Host "  https://github.com/andyofengland/temporal-workflow-viewer/blob/main/WORKFLOW_ATTRIBUTES_GUIDE.md" -ForegroundColor White

@@ -59,4 +59,4 @@ echo "Done. The build task will run after each build and write .mermaid files to
 echo "  bin/<Configuration>/<TargetFramework>/diagrams/"
 echo ""
 echo "Annotate your workflow types with [WorkflowDiagram], [WorkflowStep], etc. See:"
-echo "  https://github.com/andynightingale/temporal-workflow-viewer/blob/main/WORKFLOW_ATTRIBUTES_GUIDE.md"
+echo "  https://github.com/andyofengland/temporal-workflow-viewer/blob/main/WORKFLOW_ATTRIBUTES_GUIDE.md"

@@ -83,13 +83,13 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Build
-        run: dotnet build -c Release
+        run: dotnet build -c Release -p:Version=1.0.0.${{ github.run_number }}
 
       - name: Pack WorkflowDiagramming
-        run: dotnet pack src/TemporalDashboard.WorkflowDiagramming/TemporalDashboard.WorkflowDiagramming.csproj -c Release -o nupkg --no-build
+        run: dotnet pack src/TemporalDashboard.WorkflowDiagramming/TemporalDashboard.WorkflowDiagramming.csproj -c Release -o nupkg --no-build -p:Version=1.0.0.${{ github.run_number }}
 
       - name: Pack WorkflowDiagramming.Build
-        run: dotnet pack src/TemporalDashboard.WorkflowDiagramming.Build/TemporalDashboard.WorkflowDiagramming.Build.csproj -c Release -o nupkg --no-build
+        run: dotnet pack src/TemporalDashboard.WorkflowDiagramming.Build/TemporalDashboard.WorkflowDiagramming.Build.csproj -c Release -o nupkg --no-build -p:Version=1.0.0.${{ github.run_number }}
 
       - name: Push to NuGet.org
         run: |

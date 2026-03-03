@@ -70,9 +70,15 @@ Example (if your workflow project is in the same repo, e.g. under `src/MyWorkflo
 
 Default output folder: `bin\$(Configuration)\net10.0\diagrams\`.
 
-## Task parameters
+## Task parameters and properties
 
-You can override the default behaviour by calling the task yourself in a target and setting:
+**MSBuild property** (when using the built-in target):
+
+| Property | Description |
+|----------|-------------|
+| `GenerateWorkflowDiagramsAssemblyPath` | Override the assembly the task inspects. Default is `$(OutputPath)$(AssemblyName).dll`. Set this when your workflows are in a different project’s output DLL (see [Troubleshooting](#troubleshooting)). |
+
+**Task parameters** (when invoking the task yourself in a target):
 
 | Parameter        | Description |
 |------------------|-------------|
@@ -118,6 +124,25 @@ Example:
   ]
 }
 ```
+
+## Troubleshooting
+
+### No diagram output or empty `diagrams` folder
+
+- **Add the package to the project that contains your workflow classes.** The task inspects the **built DLL of the project that references this package**. If you add the package only to your host/API project, that DLL often has no `[Workflow]` types, so you get an empty folder or a build message that no workflows were found.
+- **Workflows must be marked with Temporal’s `[Workflow]` attribute** (`Temporalio.Workflows.WorkflowAttribute`). The task discovers only types that have this attribute.
+- **If your workflows live in a separate project** (e.g. a “Workflows” class library), either:
+  - Add `TemporalDashboard.WorkflowDiagramming.Build` to that workflow project and build it to get diagrams in that project’s `bin/.../diagrams/`, or
+  - Keep the package on the host project and point the task at the workflow DLL by setting `GenerateWorkflowDiagramsAssemblyPath` in your host project:
+
+```xml
+<PropertyGroup>
+  <!-- Point to the workflow project's output DLL (adjust path to match your layout) -->
+  <GenerateWorkflowDiagramsAssemblyPath>$(OutputPath)..\MyWorkflows\bin\$(Configuration)\net10.0\MyWorkflows.dll</GenerateWorkflowDiagramsAssemblyPath>
+</PropertyGroup>
+```
+
+- Build with normal or high verbosity (`dotnet build -v n` or `-v d`) to see messages such as “GenerateWorkflowDiagrams skipped: assembly not found” or “No workflow types found in …”.
 
 ## Requirements
 

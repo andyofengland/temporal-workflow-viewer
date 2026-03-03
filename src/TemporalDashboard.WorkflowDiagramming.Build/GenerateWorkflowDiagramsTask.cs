@@ -6,9 +6,14 @@ using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
 using TemporalDashboard.WorkflowDiagramming;
 using TemporalDashboard.WorkflowDiagramming.Attributes;
-using Temporalio.Workflows;
 
 namespace TemporalDashboard.WorkflowDiagramming.Build;
+
+/// <summary>Fully qualified name of Temporal's [Workflow] attribute. We match by name so workflow types are found even when the attribute was applied in a different AssemblyLoadContext (e.g. isolated context vs task context).</summary>
+internal static class TemporalWorkflowAttributeName
+{
+    public const string FullName = "Temporalio.Workflows.WorkflowAttribute";
+}
 
 /// <summary>
 /// MSBuild task that loads a built workflow assembly and generates Mermaid diagram files,
@@ -119,12 +124,16 @@ public sealed class GenerateWorkflowDiagramsTask : Microsoft.Build.Utilities.Tas
             {
                 var assembly = alc.LoadFromAssemblyPath(fullAssemblyPath);
                 var workflowTypes = assembly.GetTypes()
-                    .Where(t => t.GetCustomAttribute<WorkflowAttribute>() != null)
+                    .Where(t => HasTemporalWorkflowAttribute(t))
                     .ToList();
 
                 if (workflowTypes.Count == 0)
                 {
-                    Log.LogMessage(MessageImportance.Low, "No workflow types found in {0}. Skipping diagram generation.", fullAssemblyPath);
+                    Log.LogWarning(
+                        "No workflow types found in {0}. Diagram output will be empty. " +
+                        "Ensure the assembly contains types marked with [Workflow] (Temporalio.Workflows). " +
+                        "If your workflows live in a different project, add this package to that project, or set GenerateWorkflowDiagramsAssemblyPath to that project's output DLL.",
+                        fullAssemblyPath);
                     return true;
                 }
 
@@ -200,6 +209,25 @@ public sealed class GenerateWorkflowDiagramsTask : Microsoft.Build.Utilities.Tas
             if (resolveHandler != null)
                 AssemblyLoadContext.Default.Resolving -= resolveHandler;
         }
+    }
+
+    /// <summary>Detects [Workflow] by attribute type name so types are found even when the attribute comes from a different AssemblyLoadContext (e.g. user's isolated context).</summary>
+    private static bool HasTemporalWorkflowAttribute(Type type)
+    {
+        if (type == null || !type.IsClass) return false;
+        try
+        {
+            foreach (var attr in type.GetCustomAttributes(false))
+            {
+                if (attr?.GetType().FullName == TemporalWorkflowAttributeName.FullName)
+                    return true;
+            }
+        }
+        catch
+        {
+            // Reflection can throw for generic or other edge cases; treat as no attribute
+        }
+        return false;
     }
 
     private void CreateZipArchive(string outputDir, string zipPath, string diagramExtension, string metadataPath)

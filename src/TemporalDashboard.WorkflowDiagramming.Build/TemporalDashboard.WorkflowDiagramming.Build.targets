@@ -11,12 +11,17 @@
     TaskName="TemporalDashboard.WorkflowDiagramming.Build.GenerateWorkflowDiagramsTask"
     AssemblyFile="$(_WorkflowDiagrammingBuildTaskDir)TemporalDashboard.WorkflowDiagramming.Build.dll" />
 
-  <Target
-    Name="GenerateWorkflowDiagrams"
-    AfterTargets="Build"
-    Condition="Exists('$(OutputPath)$(AssemblyName).dll')">
+  <!-- Optional: set GenerateWorkflowDiagramsAssemblyPath to point to a different DLL (e.g. a referenced workflow project's output) -->
+  <PropertyGroup>
+    <_GenerateWorkflowDiagramsAssemblyPath Condition="'$(GenerateWorkflowDiagramsAssemblyPath)' != ''">$(GenerateWorkflowDiagramsAssemblyPath)</_GenerateWorkflowDiagramsAssemblyPath>
+    <_GenerateWorkflowDiagramsAssemblyPath Condition="'$(_GenerateWorkflowDiagramsAssemblyPath)' == ''">$(OutputPath)$(AssemblyName).dll</_GenerateWorkflowDiagramsAssemblyPath>
+  </PropertyGroup>
+
+  <Target Name="GenerateWorkflowDiagrams" AfterTargets="Build">
+    <Message Condition="!Exists('$(_GenerateWorkflowDiagramsAssemblyPath)')" Importance="normal" Text="GenerateWorkflowDiagrams skipped: assembly not found ($(_GenerateWorkflowDiagramsAssemblyPath)). Add the package to the project that contains your [Workflow] types, or set GenerateWorkflowDiagramsAssemblyPath." />
     <GenerateWorkflowDiagramsTask
-      AssemblyPath="$(OutputPath)$(AssemblyName).dll"
+      Condition="Exists('$(_GenerateWorkflowDiagramsAssemblyPath)')"
+      AssemblyPath="$(_GenerateWorkflowDiagramsAssemblyPath)"
       OutputPath="$(OutputPath)diagrams"
       FileExtension=".mermaid"
       TargetFramework="$(TargetFramework)"

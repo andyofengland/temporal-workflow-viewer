@@ -8,7 +8,8 @@ using TemporalDashboard.WorkflowDiagramming.Attributes;
 namespace TemporalDashboard.WorkflowDiagramming;
 
 /// <summary>
-/// Generates Mermaid diagrams from workflow classes using reflection and attributes
+/// Generates Mermaid diagrams from workflow classes using reflection and attributes.
+/// Resolves attributes by type name so diagrams work when types come from a different AssemblyLoadContext (e.g. MSBuild task).
 /// </summary>
 public static class WorkflowDiagramGenerator
 {
@@ -19,14 +20,15 @@ public static class WorkflowDiagramGenerator
     {
         var sb = new StringBuilder();
 
-        // Get workflow diagram metadata
+        // Get workflow diagram metadata (try strong type first, then cross-context by name)
         var workflowDiagram = workflowType.GetCustomAttribute<WorkflowDiagramAttribute>();
-        var direction = workflowDiagram?.Direction ?? "TD";
+        var direction = workflowDiagram?.Direction ?? Attr.Direction(workflowType) ?? "TD";
         sb.AppendLine($"flowchart {direction}");
 
-        // Get the workflow run method
+        // Get the workflow run method (Temporal's [WorkflowRun]; resolve by name for cross-ALC)
         var runMethod = workflowType.GetMethods()
-            .FirstOrDefault(m => m.GetCustomAttribute<WorkflowRunAttribute>() != null);
+            .FirstOrDefault(m => m.GetCustomAttribute<WorkflowRunAttribute>() != null)
+            ?? workflowType.GetMethods().FirstOrDefault(m => Attr.HasAttribute(m, Attr.WorkflowRun));
 
         if (runMethod == null)
         {
@@ -216,35 +218,48 @@ public static class WorkflowDiagramGenerator
     {
         var data = new WorkflowDiagramData();
 
-        // Get start attribute
+        // Get start attribute (with cross-context fallback)
         var startAttr = runMethod.GetCustomAttribute<WorkflowStartAttribute>();
-        data.StartLabel = startAttr?.Label ?? "Start";
+        data.StartLabel = startAttr?.Label ?? Attr.StartLabel(runMethod) ?? "Start";
 
         // Collect all step attributes from the workflow class and methods
         var allMethods = workflowType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic);
         
-        // Get steps from attributes on methods
+        // Get steps from attributes on methods (with cross-context fallback via Attr)
         foreach (var method in allMethods)
         {
             // Check for WorkflowStep attributes
-            var stepAttrs = method.GetCustomAttributes<WorkflowStepAttribute>();
-            foreach (var stepAttr in stepAttrs)
-            {
-                data.Steps.Add(new WorkflowStepData
-                {
-                    Id = stepAttr.Id,
-                    Label = stepAttr.Label,
-                    Order = stepAttr.Order,
-                    StepType = stepAttr.StepType,
-                    Description = stepAttr.Description,
-                    IsFailure = stepAttr.IsFailure,
-                    IsSuccess = stepAttr.IsSuccess,
-                    IsAiPowered = stepAttr.IsAiPowered
-                });
-            }
+            var stepAttrs = method.GetCustomAttributes<WorkflowStepAttribute>().ToList();
+            if (stepAttrs.Count > 0)
+                foreach (var stepAttr in stepAttrs)
+                    data.Steps.Add(new WorkflowStepData
+                    {
+                        Id = stepAttr.Id,
+                        Label = stepAttr.Label,
+                        Order = stepAttr.Order,
+                        StepType = stepAttr.StepType,
+                        Description = stepAttr.Description,
+                        IsFailure = stepAttr.IsFailure,
+                        IsSuccess = stepAttr.IsSuccess,
+                        IsAiPowered = stepAttr.IsAiPowered
+                    });
+            else
+                foreach (var a in Attr.GetAttributes(method, Attr.WorkflowStep))
+                    data.Steps.Add(new WorkflowStepData
+                    {
+                        Id = Attr.GetPropString(a, "Id") ?? "",
+                        Label = Attr.GetPropString(a, "Label") ?? "",
+                        Order = Attr.GetPropInt(a, "Order"),
+                        StepType = Attr.GetPropStepType(a),
+                        Description = Attr.GetPropString(a, "Description"),
+                        IsFailure = Attr.GetPropBool(a, "IsFailure"),
+                        IsSuccess = Attr.GetPropBool(a, "IsSuccess"),
+                        IsAiPowered = Attr.GetPropBool(a, "IsAiPowered")
+                    });
 
             // Check for WorkflowDecision attributes
             var decisionAttr = method.GetCustomAttribute<WorkflowDecisionAttribute>();
+            var decisionAttrObj = decisionAttr != null ? null : Attr.GetAttribute(method, Attr.WorkflowDecision);
             if (decisionAttr != null)
             {
                 data.Steps.Add(new WorkflowStepData
@@ -257,9 +272,22 @@ public static class WorkflowDiagramGenerator
                     IsAiPowered = false
                 });
             }
+            else if (decisionAttrObj != null)
+            {
+                data.Steps.Add(new WorkflowStepData
+                {
+                    Id = Attr.GetPropString(decisionAttrObj, "Id") ?? "",
+                    Label = Attr.GetPropString(decisionAttrObj, "Label") ?? "",
+                    Order = Attr.GetPropInt(decisionAttrObj, "Order"),
+                    StepType = WorkflowStepType.Decision,
+                    Description = Attr.GetPropString(decisionAttrObj, "Description"),
+                    IsAiPowered = false
+                });
+            }
 
             // Check for WorkflowHumanApproval attributes
             var approvalAttr = method.GetCustomAttribute<WorkflowHumanApprovalAttribute>();
+            var approvalAttrObj = approvalAttr != null ? null : Attr.GetAttribute(method, Attr.WorkflowHumanApproval);
             if (approvalAttr != null)
             {
                 data.Steps.Add(new WorkflowStepData
@@ -272,70 +300,131 @@ public static class WorkflowDiagramGenerator
                     IsAiPowered = false
                 });
             }
+            else if (approvalAttrObj != null)
+            {
+                data.Steps.Add(new WorkflowStepData
+                {
+                    Id = Attr.GetPropString(approvalAttrObj, "Id") ?? "",
+                    Label = Attr.GetPropString(approvalAttrObj, "Label") ?? "",
+                    Order = Attr.GetPropInt(approvalAttrObj, "Order"),
+                    StepType = WorkflowStepType.HumanApproval,
+                    Description = Attr.GetPropString(approvalAttrObj, "Description"),
+                    IsAiPowered = false
+                });
+            }
 
             // Check for WorkflowEnd attributes
             var endAttr = method.GetCustomAttribute<WorkflowEndAttribute>();
+            var endAttrObj = endAttr != null ? null : Attr.GetAttribute(method, Attr.WorkflowEnd);
             if (endAttr != null)
             {
                 data.Steps.Add(new WorkflowStepData
                 {
                     Id = endAttr.Id,
                     Label = endAttr.Label,
-                    Order = int.MaxValue, // End steps should be last
+                    Order = int.MaxValue,
                     StepType = WorkflowStepType.End,
                     IsFailure = endAttr.IsFailure,
                     IsSuccess = endAttr.IsSuccess,
                     IsAiPowered = false
                 });
             }
+            else if (endAttrObj != null)
+            {
+                data.Steps.Add(new WorkflowStepData
+                {
+                    Id = Attr.GetPropString(endAttrObj, "Id") ?? "",
+                    Label = Attr.GetPropString(endAttrObj, "Label") ?? "",
+                    Order = int.MaxValue,
+                    StepType = WorkflowStepType.End,
+                    IsFailure = Attr.GetPropBool(endAttrObj, "IsFailure"),
+                    IsSuccess = Attr.GetPropBool(endAttrObj, "IsSuccess"),
+                    IsAiPowered = false
+                });
+            }
 
             // Check for WorkflowTransition attributes
-            var transitionAttrs = method.GetCustomAttributes<WorkflowTransitionAttribute>();
-            foreach (var transitionAttr in transitionAttrs)
-            {
-                data.Transitions.Add(new WorkflowTransitionData
-                {
-                    From = transitionAttr.From,
-                    To = transitionAttr.To,
-                    Label = transitionAttr.Label,
-                    Condition = transitionAttr.Condition,
-                    IsFailurePath = transitionAttr.IsFailurePath,
-                    IsSuccessPath = transitionAttr.IsSuccessPath
-                });
-            }
+            var transitionAttrs = method.GetCustomAttributes<WorkflowTransitionAttribute>().ToList();
+            var transitionObjs = transitionAttrs.Count == 0 ? Attr.GetAttributes(method, Attr.WorkflowTransition).ToList() : null;
+            if (transitionObjs != null)
+                foreach (var a in transitionObjs)
+                    data.Transitions.Add(new WorkflowTransitionData
+                    {
+                        From = Attr.GetPropString(a, "From") ?? "",
+                        To = Attr.GetPropString(a, "To") ?? "",
+                        Label = Attr.GetPropString(a, "Label"),
+                        Condition = Attr.GetPropString(a, "Condition"),
+                        IsFailurePath = Attr.GetPropBool(a, "IsFailurePath"),
+                        IsSuccessPath = Attr.GetPropBool(a, "IsSuccessPath")
+                    });
+            else
+                foreach (var transitionAttr in transitionAttrs)
+                    data.Transitions.Add(new WorkflowTransitionData
+                    {
+                        From = transitionAttr.From,
+                        To = transitionAttr.To,
+                        Label = transitionAttr.Label,
+                        Condition = transitionAttr.Condition,
+                        IsFailurePath = transitionAttr.IsFailurePath,
+                        IsSuccessPath = transitionAttr.IsSuccessPath
+                    });
 
             // Check for WorkflowBranch attributes
-            var branchAttrs = method.GetCustomAttributes<WorkflowBranchAttribute>();
-            foreach (var branchAttr in branchAttrs)
-            {
-                data.Branches.Add(new WorkflowBranchData
-                {
-                    DecisionId = branchAttr.DecisionId,
-                    Label = branchAttr.Label,
-                    TargetStepId = branchAttr.TargetStepId,
-                    IsFailurePath = branchAttr.IsFailurePath,
-                    IsSuccessPath = branchAttr.IsSuccessPath,
-                    IsContinuePath = branchAttr.IsContinuePath
-                });
-            }
+            var branchAttrs = method.GetCustomAttributes<WorkflowBranchAttribute>().ToList();
+            var branchObjs = branchAttrs.Count == 0 ? Attr.GetAttributes(method, Attr.WorkflowBranch).ToList() : null;
+            if (branchObjs != null)
+                foreach (var a in branchObjs)
+                    data.Branches.Add(new WorkflowBranchData
+                    {
+                        DecisionId = Attr.GetPropString(a, "DecisionId") ?? "",
+                        Label = Attr.GetPropString(a, "Label") ?? "",
+                        TargetStepId = Attr.GetPropString(a, "TargetStepId") ?? "",
+                        IsFailurePath = Attr.GetPropBool(a, "IsFailurePath"),
+                        IsSuccessPath = Attr.GetPropBool(a, "IsSuccessPath"),
+                        IsContinuePath = Attr.GetPropBool(a, "IsContinuePath")
+                    });
+            else
+                foreach (var branchAttr in branchAttrs)
+                    data.Branches.Add(new WorkflowBranchData
+                    {
+                        DecisionId = branchAttr.DecisionId,
+                        Label = branchAttr.Label,
+                        TargetStepId = branchAttr.TargetStepId,
+                        IsFailurePath = branchAttr.IsFailurePath,
+                        IsSuccessPath = branchAttr.IsSuccessPath,
+                        IsContinuePath = branchAttr.IsContinuePath
+                    });
         }
 
         // Also check class-level attributes
-        var classStepAttrs = workflowType.GetCustomAttributes<WorkflowStepAttribute>();
-        foreach (var stepAttr in classStepAttrs)
-        {
-            data.Steps.Add(new WorkflowStepData
-            {
-                Id = stepAttr.Id,
-                Label = stepAttr.Label,
-                Order = stepAttr.Order,
-                StepType = stepAttr.StepType,
-                Description = stepAttr.Description,
-                IsFailure = stepAttr.IsFailure,
-                IsSuccess = stepAttr.IsSuccess,
-                IsAiPowered = stepAttr.IsAiPowered
-            });
-        }
+        var classStepAttrs = workflowType.GetCustomAttributes<WorkflowStepAttribute>().ToList();
+        var classStepObjs = classStepAttrs.Count == 0 ? Attr.GetAttributes(workflowType, Attr.WorkflowStep).ToList() : null;
+        if (classStepObjs != null)
+            foreach (var a in classStepObjs)
+                data.Steps.Add(new WorkflowStepData
+                {
+                    Id = Attr.GetPropString(a, "Id") ?? "",
+                    Label = Attr.GetPropString(a, "Label") ?? "",
+                    Order = Attr.GetPropInt(a, "Order"),
+                    StepType = Attr.GetPropStepType(a),
+                    Description = Attr.GetPropString(a, "Description"),
+                    IsFailure = Attr.GetPropBool(a, "IsFailure"),
+                    IsSuccess = Attr.GetPropBool(a, "IsSuccess"),
+                    IsAiPowered = Attr.GetPropBool(a, "IsAiPowered")
+                });
+        else
+            foreach (var stepAttr in classStepAttrs)
+                data.Steps.Add(new WorkflowStepData
+                {
+                    Id = stepAttr.Id,
+                    Label = stepAttr.Label,
+                    Order = stepAttr.Order,
+                    StepType = stepAttr.StepType,
+                    Description = stepAttr.Description,
+                    IsFailure = stepAttr.IsFailure,
+                    IsSuccess = stepAttr.IsSuccess,
+                    IsAiPowered = stepAttr.IsAiPowered
+                });
 
         return data;
     }
@@ -382,6 +471,116 @@ public static class WorkflowDiagramGenerator
         public bool IsSuccessPath { get; set; }
         public bool IsContinuePath { get; set; }
     }
+
+    /// <summary>Resolves attributes by full type name so reflection works across AssemblyLoadContext boundaries (e.g. MSBuild task loading user assembly in isolated context).</summary>
+    private static class Attr
+    {
+        public const string WorkflowRun = "Temporalio.Workflows.WorkflowRunAttribute";
+        public const string WorkflowDiagram = "TemporalDashboard.WorkflowDiagramming.Attributes.WorkflowDiagramAttribute";
+        public const string WorkflowStart = "TemporalDashboard.WorkflowDiagramming.Attributes.WorkflowStartAttribute";
+        public const string WorkflowStep = "TemporalDashboard.WorkflowDiagramming.Attributes.WorkflowStepAttribute";
+        public const string WorkflowDecision = "TemporalDashboard.WorkflowDiagramming.Attributes.WorkflowDecisionAttribute";
+        public const string WorkflowHumanApproval = "TemporalDashboard.WorkflowDiagramming.Attributes.WorkflowHumanApprovalAttribute";
+        public const string WorkflowEnd = "TemporalDashboard.WorkflowDiagramming.Attributes.WorkflowEndAttribute";
+        public const string WorkflowTransition = "TemporalDashboard.WorkflowDiagramming.Attributes.WorkflowTransitionAttribute";
+        public const string WorkflowBranch = "TemporalDashboard.WorkflowDiagramming.Attributes.WorkflowBranchAttribute";
+
+        public static bool HasAttribute(MemberInfo member, string attributeFullName)
+        {
+            if (member == null || string.IsNullOrEmpty(attributeFullName)) return false;
+            try
+            {
+                foreach (var a in member.GetCustomAttributes(false))
+                    if (a?.GetType().FullName == attributeFullName) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        public static object? GetAttribute(MemberInfo member, string attributeFullName)
+        {
+            if (member == null) return null;
+            try
+            {
+                foreach (var a in member.GetCustomAttributes(false))
+                    if (a?.GetType().FullName == attributeFullName) return a;
+            }
+            catch { }
+            return null;
+        }
+
+        public static IEnumerable<object> GetAttributes(MemberInfo member, string attributeFullName)
+        {
+            if (member == null) return [];
+            try
+            {
+                return member.GetCustomAttributes(false)
+                    .Where(a => a?.GetType().FullName == attributeFullName)
+                    .ToList();
+            }
+            catch
+            {
+                return [];
+            }
+        }
+
+        public static string? Direction(Type type) => GetString(type, WorkflowDiagram, "Direction");
+        public static string? StartLabel(MemberInfo method) => GetString(method, WorkflowStart, "Label");
+
+        public static string? GetString(MemberInfo member, string attributeFullName, string propertyName)
+        {
+            var a = GetAttribute(member, attributeFullName);
+            return a == null ? null : GetPropString(a, propertyName);
+        }
+
+        public static string? GetPropString(object attr, string propertyName)
+        {
+            try
+            {
+                var p = attr.GetType().GetProperty(propertyName);
+                return p?.GetValue(attr) as string;
+            }
+            catch { return null; }
+        }
+
+        public static int GetPropInt(object attr, string propertyName, int defaultValue = 0)
+        {
+            try
+            {
+                var p = attr.GetType().GetProperty(propertyName);
+                var v = p?.GetValue(attr);
+                if (v is int i) return i;
+                if (v != null && int.TryParse(v.ToString(), out var n)) return n;
+            }
+            catch { }
+            return defaultValue;
+        }
+
+        public static bool GetPropBool(object attr, string propertyName, bool defaultValue = false)
+        {
+            try
+            {
+                var p = attr.GetType().GetProperty(propertyName);
+                var v = p?.GetValue(attr);
+                if (v is bool b) return b;
+                if (v != null && bool.TryParse(v.ToString(), out var x)) return x;
+            }
+            catch { }
+            return defaultValue;
+        }
+
+        public static WorkflowStepType GetPropStepType(object attr, string propertyName = "StepType")
+        {
+            try
+            {
+                var p = attr.GetType().GetProperty(propertyName);
+                var v = p?.GetValue(attr);
+                if (v is WorkflowStepType st) return st;
+                if (v is int i) return (WorkflowStepType)i;
+                if (v is Enum e) return (WorkflowStepType)Convert.ToInt32(e);
+            }
+            catch { }
+            return WorkflowStepType.Activity;
+        }
+    }
 }
-
-

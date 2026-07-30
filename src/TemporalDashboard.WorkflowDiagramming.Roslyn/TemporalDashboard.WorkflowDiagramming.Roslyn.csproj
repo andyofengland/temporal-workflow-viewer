@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>TemporalDashboard.WorkflowDiagramming.Roslyn</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Temporal Dashboard</Authors>
+    <Company>Temporal Dashboard</Company>
+    <Description>Roslyn-based extractor that builds Mermaid workflow diagrams from Temporal .NET workflow source without diagramming attributes. Analyzes [WorkflowRun] method bodies for activities, decisions, and parallelism.</Description>
+    <PackageTags>temporal;workflow;mermaid;diagram;dotnet;roslyn;source-analysis</PackageTags>
+    <PackageProjectUrl>https://github.com/andyofengland/temporal-workflow-viewer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/andyofengland/temporal-workflow-viewer</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Becomes a NuGet dependency on TemporalDashboard.WorkflowDiagramming when packed -->
+    <ProjectReference Include="..\TemporalDashboard.WorkflowDiagramming\TemporalDashboard.WorkflowDiagramming.csproj" />
+  </ItemGroup>
+
+</Project>

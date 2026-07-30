@@ -91,6 +91,12 @@ jobs:
       - name: Pack WorkflowDiagramming.Build
         run: dotnet pack src/TemporalDashboard.WorkflowDiagramming.Build/TemporalDashboard.WorkflowDiagramming.Build.csproj -c Release -o nupkg --no-build -p:Version=1.0.0.${{ github.run_number }}
 
+      - name: Pack WorkflowDiagramming.Roslyn
+        run: dotnet pack src/TemporalDashboard.WorkflowDiagramming.Roslyn/TemporalDashboard.WorkflowDiagramming.Roslyn.csproj -c Release -o nupkg --no-build -p:Version=1.0.0.${{ github.run_number }}
+
+      - name: Pack WorkflowDiagramming.Roslyn.Build
+        run: dotnet pack src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/TemporalDashboard.WorkflowDiagramming.Roslyn.Build.csproj -c Release -o nupkg --no-build -p:Version=1.0.0.${{ github.run_number }}
+
       - name: Push to NuGet.org
         run: |
           dotnet nuget push nupkg/*.nupkg \

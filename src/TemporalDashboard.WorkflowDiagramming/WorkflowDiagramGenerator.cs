@@ -1,9 +1,7 @@
 using System.Reflection;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Linq;
 using Temporalio.Workflows;
 using TemporalDashboard.WorkflowDiagramming.Attributes;
+using TemporalDashboard.WorkflowDiagramming.Models;
 
 namespace TemporalDashboard.WorkflowDiagramming;
 
@@ -18,14 +16,6 @@ public static class WorkflowDiagramGenerator
     /// </summary>
     public static string GenerateMermaidDiagram(Type workflowType)
     {
-        var sb = new StringBuilder();
-
-        // Get workflow diagram metadata (try strong type first, then cross-context by name)
-        var workflowDiagram = workflowType.GetCustomAttribute<WorkflowDiagramAttribute>();
-        var direction = workflowDiagram?.Direction ?? Attr.Direction(workflowType) ?? "TD";
-        sb.AppendLine($"flowchart {direction}");
-
-        // Get the workflow run method (Temporal's [WorkflowRun]; resolve by name for cross-ALC)
         var runMethod = workflowType.GetMethods()
             .FirstOrDefault(m => m.GetCustomAttribute<WorkflowRunAttribute>() != null)
             ?? workflowType.GetMethods().FirstOrDefault(m => Attr.HasAttribute(m, Attr.WorkflowRun));
@@ -35,204 +25,45 @@ public static class WorkflowDiagramGenerator
             return "flowchart TD\n    Error[Workflow Run Method Not Found]";
         }
 
-        // Analyze the workflow using attributes
-        var workflowData = AnalyzeWorkflowFromAttributes(workflowType, runMethod);
-        
-        // Generate nodes
-        var nodeMap = new Dictionary<string, string>(); // Maps step ID to Mermaid node ID
-
-        // Generate start node
-        var startLabel = workflowData.StartLabel ?? "Start";
-        var startNodeId = "Start";
-        sb.AppendLine($"    {startNodeId}([{startLabel}])");
-        nodeMap["Start"] = startNodeId;
-
-        // Generate all step nodes
-        foreach (var step in workflowData.Steps.OrderBy(s => s.Order))
-        {
-            var mermaidNodeId = SanitizeNodeName(step.Id);
-            nodeMap[step.Id] = mermaidNodeId;
-
-            // Generate node based on step type
-            switch (step.StepType)
-            {
-                case WorkflowStepType.Activity:
-                    // Add AI indicator if this is an AI-powered activity
-                    var activityLabel = step.IsAiPowered ? $"🤖 {step.Label}" : step.Label;
-                    sb.AppendLine($"    {mermaidNodeId}[\"{activityLabel}\"]");
-                    // Style AI-powered activities with a distinct color (purple/magenta)
-                    if (step.IsAiPowered)
-                    {
-                        sb.AppendLine($"    style {mermaidNodeId} fill:#e1bee7,stroke:#9c27b0,stroke-width:3px");
-                    }
-                    break;
-                case WorkflowStepType.Decision:
-                    sb.AppendLine($"    {mermaidNodeId}{{\"{step.Label}\"}}");
-                    sb.AppendLine($"    style {mermaidNodeId} fill:#e3f2fd,stroke:#1976d2,stroke-width:2px");
-                    break;
-                case WorkflowStepType.HumanApproval:
-                    sb.AppendLine($"    {mermaidNodeId}[\"👤 {step.Label}\"]");
-                    sb.AppendLine($"    style {mermaidNodeId} fill:#ffd43b,stroke:#333,stroke-width:2px");
-                    break;
-                case WorkflowStepType.Start:
-                    sb.AppendLine($"    {mermaidNodeId}([{step.Label}])");
-                    break;
-                case WorkflowStepType.End:
-                    sb.AppendLine($"    {mermaidNodeId}([\"{step.Label}\"])");
-                    if (step.IsFailure)
-                    {
-                        sb.AppendLine($"    style {mermaidNodeId} fill:#ff6b6b,stroke:#333,stroke-width:2px");
-                    }
-                    else if (step.IsSuccess)
-                    {
-                        sb.AppendLine($"    style {mermaidNodeId} fill:#51cf66,stroke:#333,stroke-width:2px");
-                    }
-                    break;
-            }
-        }
-
-        // Identify decision node IDs to avoid duplicate edges
-        var decisionNodeIds = new HashSet<string>(
-            workflowData.Steps
-                .Where(s => s.StepType == WorkflowStepType.Decision)
-                .Select(s => s.Id)
-        );
-
-        // Detect parallel execution patterns: multiple steps converging on the same target
-        var parallelGroups = workflowData.Transitions
-            .Where(t => !decisionNodeIds.Contains(t.From))
-            .GroupBy(t => t.To)
-            .Where(g => g.Count() > 1)
-            .ToDictionary(g => g.Key, g => g.Select(t => t.From).ToList());
-
-        // Detect parallel start: multiple steps that start from the same source
-        var parallelStartGroups = workflowData.Transitions
-            .Where(t => !decisionNodeIds.Contains(t.From))
-            .GroupBy(t => t.From)
-            .Where(g => g.Count() > 1)
-            .ToDictionary(g => g.Key, g => g.Select(t => t.To).ToList());
-
-        // Generate edges/transitions (but skip transitions FROM decision nodes - those are handled by branches)
-        foreach (var transition in workflowData.Transitions)
-        {
-            // Skip transitions that originate from decision nodes - branches handle those
-            if (decisionNodeIds.Contains(transition.From))
-            {
-                continue;
-            }
-
-            if (nodeMap.TryGetValue(transition.From, out var fromNode) && 
-                nodeMap.TryGetValue(transition.To, out var toNode))
-            {
-                var edgeLabel = !string.IsNullOrEmpty(transition.Label) 
-                    ? $"|{transition.Label}|" 
-                    : "";
-                
-                // Check if this is part of a parallel execution group (converging)
-                if (parallelGroups.TryGetValue(transition.To, out var parallelSources) && 
-                    parallelSources.Contains(transition.From))
-                {
-                    // Add parallel indicator to edge label
-                    if (string.IsNullOrEmpty(edgeLabel))
-                    {
-                        edgeLabel = "|Parallel|";
-                    }
-                    else
-                    {
-                        edgeLabel = edgeLabel.Replace("|", "") + " (Parallel)";
-                        edgeLabel = $"|{edgeLabel}|";
-                    }
-                }
-                // Check if this is part of a parallel start (diverging)
-                else if (parallelStartGroups.TryGetValue(transition.From, out var parallelTargets) && 
-                         parallelTargets.Contains(transition.To))
-                {
-                    // Add parallel indicator to edge label
-                    if (string.IsNullOrEmpty(edgeLabel))
-                    {
-                        edgeLabel = "|Parallel|";
-                    }
-                    else
-                    {
-                        edgeLabel = edgeLabel.Replace("|", "") + " (Parallel)";
-                        edgeLabel = $"|{edgeLabel}|";
-                    }
-                }
-                
-                sb.AppendLine($"    {fromNode} -->{edgeLabel} {toNode}");
-            }
-        }
-        
-        // Add visual styling for parallel convergence points (join nodes)
-        foreach (var parallelGroup in parallelGroups)
-        {
-            if (nodeMap.TryGetValue(parallelGroup.Key, out var joinNode))
-            {
-                // Style the join node to indicate parallel convergence
-                sb.AppendLine($"    style {joinNode} stroke-dasharray: 5 5,stroke-width:3px");
-            }
-        }
-        
-        // Add visual styling for parallel start points (fork nodes)
-        foreach (var parallelStartGroup in parallelStartGroups)
-        {
-            if (nodeMap.TryGetValue(parallelStartGroup.Key, out var forkNode))
-            {
-                // Style the fork node to indicate parallel divergence
-                sb.AppendLine($"    style {forkNode} stroke-dasharray: 5 5,stroke-width:3px");
-            }
-        }
-
-        // Generate branches from decisions (these are the primary edges for decision nodes)
-        foreach (var branch in workflowData.Branches)
-        {
-            if (nodeMap.TryGetValue(branch.DecisionId, out var decisionNode) && 
-                nodeMap.TryGetValue(branch.TargetStepId, out var targetNode))
-            {
-                var edgeLabel = !string.IsNullOrEmpty(branch.Label) 
-                    ? $"|{branch.Label}|" 
-                    : "";
-                sb.AppendLine($"    {decisionNode} -->{edgeLabel} {targetNode}");
-
-                // Style failure paths
-                if (branch.IsFailurePath)
-                {
-                    sb.AppendLine($"    style {targetNode} fill:#ff6b6b,stroke:#333,stroke-width:2px");
-                }
-            }
-        }
-
-        return sb.ToString();
-    }
-
-    private static string SanitizeNodeName(string name)
-    {
-        // Remove special characters for Mermaid node IDs
-        return Regex.Replace(name, @"[^a-zA-Z0-9]", "");
+        var model = AnalyzeWorkflowFromAttributes(workflowType, runMethod);
+        return MermaidDiagramRenderer.Render(model);
     }
 
     /// <summary>
-    /// Analyzes a workflow type and its run method to extract workflow diagram data from attributes
+    /// Builds a <see cref="WorkflowDiagramModel"/> from diagramming attributes on the type.
     /// </summary>
-    private static WorkflowDiagramData AnalyzeWorkflowFromAttributes(Type workflowType, MethodInfo runMethod)
+    public static WorkflowDiagramModel AnalyzeWorkflow(Type workflowType)
     {
-        var data = new WorkflowDiagramData();
+        var runMethod = workflowType.GetMethods()
+            .FirstOrDefault(m => m.GetCustomAttribute<WorkflowRunAttribute>() != null)
+            ?? workflowType.GetMethods().FirstOrDefault(m => Attr.HasAttribute(m, Attr.WorkflowRun));
 
-        // Get start attribute (with cross-context fallback)
+        if (runMethod == null)
+        {
+            return new WorkflowDiagramModel();
+        }
+
+        return AnalyzeWorkflowFromAttributes(workflowType, runMethod);
+    }
+
+    private static WorkflowDiagramModel AnalyzeWorkflowFromAttributes(Type workflowType, MethodInfo runMethod)
+    {
+        var data = new WorkflowDiagramModel();
+
+        var workflowDiagram = workflowType.GetCustomAttribute<WorkflowDiagramAttribute>();
+        data.Direction = workflowDiagram?.Direction ?? Attr.Direction(workflowType) ?? "TD";
+
         var startAttr = runMethod.GetCustomAttribute<WorkflowStartAttribute>();
         data.StartLabel = startAttr?.Label ?? Attr.StartLabel(runMethod) ?? "Start";
 
-        // Collect all step attributes from the workflow class and methods
         var allMethods = workflowType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic);
-        
-        // Get steps from attributes on methods (with cross-context fallback via Attr)
+
         foreach (var method in allMethods)
         {
-            // Check for WorkflowStep attributes
             var stepAttrs = method.GetCustomAttributes<WorkflowStepAttribute>().ToList();
             if (stepAttrs.Count > 0)
                 foreach (var stepAttr in stepAttrs)
-                    data.Steps.Add(new WorkflowStepData
+                    data.Steps.Add(new WorkflowStepModel
                     {
                         Id = stepAttr.Id,
                         Label = stepAttr.Label,
@@ -245,7 +76,7 @@ public static class WorkflowDiagramGenerator
                     });
             else
                 foreach (var a in Attr.GetAttributes(method, Attr.WorkflowStep))
-                    data.Steps.Add(new WorkflowStepData
+                    data.Steps.Add(new WorkflowStepModel
                     {
                         Id = Attr.GetPropString(a, "Id") ?? "",
                         Label = Attr.GetPropString(a, "Label") ?? "",
@@ -257,12 +88,11 @@ public static class WorkflowDiagramGenerator
                         IsAiPowered = Attr.GetPropBool(a, "IsAiPowered")
                     });
 
-            // Check for WorkflowDecision attributes
             var decisionAttr = method.GetCustomAttribute<WorkflowDecisionAttribute>();
             var decisionAttrObj = decisionAttr != null ? null : Attr.GetAttribute(method, Attr.WorkflowDecision);
             if (decisionAttr != null)
             {
-                data.Steps.Add(new WorkflowStepData
+                data.Steps.Add(new WorkflowStepModel
                 {
                     Id = decisionAttr.Id,
                     Label = decisionAttr.Label,
@@ -274,7 +104,7 @@ public static class WorkflowDiagramGenerator
             }
             else if (decisionAttrObj != null)
             {
-                data.Steps.Add(new WorkflowStepData
+                data.Steps.Add(new WorkflowStepModel
                 {
                     Id = Attr.GetPropString(decisionAttrObj, "Id") ?? "",
                     Label = Attr.GetPropString(decisionAttrObj, "Label") ?? "",
@@ -285,12 +115,11 @@ public static class WorkflowDiagramGenerator
                 });
             }
 
-            // Check for WorkflowHumanApproval attributes
             var approvalAttr = method.GetCustomAttribute<WorkflowHumanApprovalAttribute>();
             var approvalAttrObj = approvalAttr != null ? null : Attr.GetAttribute(method, Attr.WorkflowHumanApproval);
             if (approvalAttr != null)
             {
-                data.Steps.Add(new WorkflowStepData
+                data.Steps.Add(new WorkflowStepModel
                 {
                     Id = approvalAttr.Id,
                     Label = approvalAttr.Label,
@@ -302,7 +131,7 @@ public static class WorkflowDiagramGenerator
             }
             else if (approvalAttrObj != null)
             {
-                data.Steps.Add(new WorkflowStepData
+                data.Steps.Add(new WorkflowStepModel
                 {
                     Id = Attr.GetPropString(approvalAttrObj, "Id") ?? "",
                     Label = Attr.GetPropString(approvalAttrObj, "Label") ?? "",
@@ -313,12 +142,11 @@ public static class WorkflowDiagramGenerator
                 });
             }
 
-            // Check for WorkflowEnd attributes
             var endAttr = method.GetCustomAttribute<WorkflowEndAttribute>();
             var endAttrObj = endAttr != null ? null : Attr.GetAttribute(method, Attr.WorkflowEnd);
             if (endAttr != null)
             {
-                data.Steps.Add(new WorkflowStepData
+                data.Steps.Add(new WorkflowStepModel
                 {
                     Id = endAttr.Id,
                     Label = endAttr.Label,
@@ -331,7 +159,7 @@ public static class WorkflowDiagramGenerator
             }
             else if (endAttrObj != null)
             {
-                data.Steps.Add(new WorkflowStepData
+                data.Steps.Add(new WorkflowStepModel
                 {
                     Id = Attr.GetPropString(endAttrObj, "Id") ?? "",
                     Label = Attr.GetPropString(endAttrObj, "Label") ?? "",
@@ -343,12 +171,11 @@ public static class WorkflowDiagramGenerator
                 });
             }
 
-            // Check for WorkflowTransition attributes
             var transitionAttrs = method.GetCustomAttributes<WorkflowTransitionAttribute>().ToList();
             var transitionObjs = transitionAttrs.Count == 0 ? Attr.GetAttributes(method, Attr.WorkflowTransition).ToList() : null;
             if (transitionObjs != null)
                 foreach (var a in transitionObjs)
-                    data.Transitions.Add(new WorkflowTransitionData
+                    data.Transitions.Add(new WorkflowTransitionModel
                     {
                         From = Attr.GetPropString(a, "From") ?? "",
                         To = Attr.GetPropString(a, "To") ?? "",
@@ -359,7 +186,7 @@ public static class WorkflowDiagramGenerator
                     });
             else
                 foreach (var transitionAttr in transitionAttrs)
-                    data.Transitions.Add(new WorkflowTransitionData
+                    data.Transitions.Add(new WorkflowTransitionModel
                     {
                         From = transitionAttr.From,
                         To = transitionAttr.To,
@@ -369,12 +196,11 @@ public static class WorkflowDiagramGenerator
                         IsSuccessPath = transitionAttr.IsSuccessPath
                     });
 
-            // Check for WorkflowBranch attributes
             var branchAttrs = method.GetCustomAttributes<WorkflowBranchAttribute>().ToList();
             var branchObjs = branchAttrs.Count == 0 ? Attr.GetAttributes(method, Attr.WorkflowBranch).ToList() : null;
             if (branchObjs != null)
                 foreach (var a in branchObjs)
-                    data.Branches.Add(new WorkflowBranchData
+                    data.Branches.Add(new WorkflowBranchModel
                     {
                         DecisionId = Attr.GetPropString(a, "DecisionId") ?? "",
                         Label = Attr.GetPropString(a, "Label") ?? "",
@@ -385,7 +211,7 @@ public static class WorkflowDiagramGenerator
                     });
             else
                 foreach (var branchAttr in branchAttrs)
-                    data.Branches.Add(new WorkflowBranchData
+                    data.Branches.Add(new WorkflowBranchModel
                     {
                         DecisionId = branchAttr.DecisionId,
                         Label = branchAttr.Label,
@@ -396,12 +222,11 @@ public static class WorkflowDiagramGenerator
                     });
         }
 
-        // Also check class-level attributes
         var classStepAttrs = workflowType.GetCustomAttributes<WorkflowStepAttribute>().ToList();
         var classStepObjs = classStepAttrs.Count == 0 ? Attr.GetAttributes(workflowType, Attr.WorkflowStep).ToList() : null;
         if (classStepObjs != null)
             foreach (var a in classStepObjs)
-                data.Steps.Add(new WorkflowStepData
+                data.Steps.Add(new WorkflowStepModel
                 {
                     Id = Attr.GetPropString(a, "Id") ?? "",
                     Label = Attr.GetPropString(a, "Label") ?? "",
@@ -414,7 +239,7 @@ public static class WorkflowDiagramGenerator
                 });
         else
             foreach (var stepAttr in classStepAttrs)
-                data.Steps.Add(new WorkflowStepData
+                data.Steps.Add(new WorkflowStepModel
                 {
                     Id = stepAttr.Id,
                     Label = stepAttr.Label,
@@ -427,49 +252,6 @@ public static class WorkflowDiagramGenerator
                 });
 
         return data;
-    }
-
-    /// <summary>
-    /// Internal data structure for workflow diagram generation
-    /// </summary>
-    private class WorkflowDiagramData
-    {
-        public string StartLabel { get; set; } = "Start";
-        public List<WorkflowStepData> Steps { get; set; } = new();
-        public List<WorkflowTransitionData> Transitions { get; set; } = new();
-        public List<WorkflowBranchData> Branches { get; set; } = new();
-    }
-
-    private class WorkflowStepData
-    {
-        public string Id { get; set; } = "";
-        public string Label { get; set; } = "";
-        public int Order { get; set; }
-        public WorkflowStepType StepType { get; set; }
-        public string? Description { get; set; }
-        public bool IsFailure { get; set; }
-        public bool IsSuccess { get; set; }
-        public bool IsAiPowered { get; set; }
-    }
-
-    private class WorkflowTransitionData
-    {
-        public string From { get; set; } = "";
-        public string To { get; set; } = "";
-        public string? Label { get; set; }
-        public string? Condition { get; set; }
-        public bool IsFailurePath { get; set; }
-        public bool IsSuccessPath { get; set; }
-    }
-
-    private class WorkflowBranchData
-    {
-        public string DecisionId { get; set; } = "";
-        public string Label { get; set; } = "";
-        public string TargetStepId { get; set; } = "";
-        public bool IsFailurePath { get; set; }
-        public bool IsSuccessPath { get; set; }
-        public bool IsContinuePath { get; set; }
     }
 
     /// <summary>Resolves attributes by full type name so reflection works across AssemblyLoadContext boundaries (e.g. MSBuild task loading user assembly in isolated context).</summary>

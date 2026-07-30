@@ -43,3 +43,33 @@ From a directory that contains a single `.csproj` (your workflow project):
 **Package source:**
 
 Scripts use `https://api.nuget.org/v3/index.json` by default. Override with `-Source` (PowerShell) or `NUGET_SOURCE` (bash).
+
+---
+
+## install-workflow-diagramming-roslyn-build
+
+Adds **TemporalDashboard.WorkflowDiagramming.Roslyn.Build** so Mermaid diagrams are generated at build time from Temporal workflow **C# source** (no diagramming attributes, no app code).
+
+```bash
+./scripts/install-workflow-diagramming-roslyn-build.sh
+./scripts/install-workflow-diagramming-roslyn-build.sh path/to/MyWorkflows.csproj 1.0.0
+```
+
+```powershell
+.\scripts\install-workflow-diagramming-roslyn-build.ps1
+.\scripts\install-workflow-diagramming-roslyn-build.ps1 -Project .\src\MyWorkflows\MyWorkflows.csproj -Version 1.0.0
+```
+
+After `dotnet build`, diagrams appear under `bin/<Configuration>/net10.0/diagrams/`. See [src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md](../src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md).
+
+---
+
+## Roslyn library package (API only)
+
+If you want to call the extractor from code (not MSBuild), add:
+
+```bash
+dotnet add package TemporalDashboard.WorkflowDiagramming.Roslyn
+```
+
+See [src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](../src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md).

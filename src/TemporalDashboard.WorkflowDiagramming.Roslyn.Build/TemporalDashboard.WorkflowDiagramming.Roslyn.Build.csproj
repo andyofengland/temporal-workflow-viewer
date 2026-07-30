@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <Description>MSBuild task that generates Mermaid workflow diagrams at build time from Temporal workflow C# source via Roslyn. No diagramming attributes required — add this package and build.</Description>
+    <PackageId>TemporalDashboard.WorkflowDiagramming.Roslyn.Build</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Temporal Dashboard</Authors>
+    <Company>Temporal Dashboard</Company>
+    <PackageTags>temporal;workflow;mermaid;diagram;msbuild;build;dotnet;roslyn</PackageTags>
+    <PackageProjectUrl>https://github.com/andyofengland/temporal-workflow-viewer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/andyofengland/temporal-workflow-viewer</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <DevelopmentDependency>true</DevelopmentDependency>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="TemporalDashboard.WorkflowDiagramming.Roslyn.Build.targets" Pack="true" PackagePath="build/$(PackageId).targets" />
+  </ItemGroup>
+
+  <!-- Pack task dependencies next to the task DLL so MSBuild can load them from the package lib folder -->
+  <Target Name="_PackRoslynBuildDependencies" BeforeTargets="$(GenerateNuspecDependsOn)">
+    <ItemGroup>
+      <_RoslynBuildDep Include="$(OutputPath)*.dll"
+                       Exclude="$(OutputPath)$(AssemblyName).dll;$(OutputPath)*Tests.dll" />
+      <None Include="@(_RoslynBuildDep)"
+            Pack="true"
+            PackagePath="lib/$(TargetFramework)/%(Filename)%(Extension)"
+            Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.8.2" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.8.2" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TemporalDashboard.WorkflowDiagramming.Roslyn\TemporalDashboard.WorkflowDiagramming.Roslyn.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

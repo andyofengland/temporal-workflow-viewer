@@ -147,7 +147,9 @@ Example:
 ## Requirements
 
 - Your workflow assembly must reference `TemporalDashboard.WorkflowDiagramming` (and `Temporalio`) so that the task can resolve attribute types when loading your DLL.
-- Workflow types must be annotated with the diagramming attributes; see **WORKFLOW_ATTRIBUTES_GUIDE.md** in the repo root.
+- **Requirements**
+  - Workflow types must be annotated with the diagramming attributes; see **WORKFLOW_ATTRIBUTES_GUIDE.md** in the repo root.
+  - Prefer attribute-free diagrams? Use **TemporalDashboard.WorkflowDiagramming.Roslyn.Build** instead (analyzes C# source at build time).
 
 ## Dependencies
 

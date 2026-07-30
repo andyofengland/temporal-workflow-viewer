@@ -1,27 +1,29 @@
 # Temporal Dashboard
 
-A web application for discovering and visualizing [Temporal](https://temporal.io/) workflows from .NET assemblies. Upload a zip of workflow DLLs, and the dashboard discovers workflow types, inspects their diagramming attributes, and renders **Mermaid** flowcharts so you can see workflow structure without reading code.
+A web application for discovering and visualizing [Temporal](https://temporal.io/) workflows from .NET assemblies. Upload a zip of workflow DLLs **or** a build-time Mermaid diagram package, and the dashboard renders **Mermaid** flowcharts so you can see workflow structure without reading code.
+
+Diagrams can come from **diagramming attributes** on the DLL, or from **Roslyn source analysis** at build time (no attributes) via `workflow-diagrams.zip`.
 
 ---
 
 ## What is Temporal?
 
-[Temporal](https://temporal.io/) is an open-source workflow engine that lets you write durable, long-running business logic as code. Instead of hand-rolling state machines, retries, and timers, you define **workflows** (the overall orchestration) and **activities** (the units of work). Temporal handles execution, retries, timeouts, and persistence so workflows survive process restarts and failures. It supports multiple languages and SDKs, including .NET. This dashboard works with **Temporal .NET workflows**: it loads your workflow assemblies and generates diagrams from the workflow structure so you can see and share how your workflows are defined without running them.
+[Temporal](https://temporal.io/) is an open-source workflow engine that lets you write durable, long-running business logic as code. Instead of hand-rolling state machines, retries, and timers, you define **workflows** (the overall orchestration) and **activities** (the units of work). Temporal handles execution, retries, timeouts, and persistence so workflows survive process restarts and failures. It supports multiple languages and SDKs, including .NET. This dashboard works with **Temporal .NET workflows**: it loads your workflow assemblies (or pre-built diagram packages) and shows how your workflows are defined without running them.
 
 ---
 
 ## What This Project Does
 
-- **Upload** zip files containing one or more .NET DLLs that define Temporal workflows.
-- **Discover** workflow types by loading assemblies (in isolated contexts) and reflecting on `[Workflow]` and diagramming attributes.
+- **Upload** zip files containing Temporal workflow DLLs and/or `workflow-diagrams.zip` packages from the Build / Roslyn.Build MSBuild tasks.
+- **Discover** workflow types by loading assemblies (attributes) or by reading diagram packages (attribute or Roslyn build output).
 - **Visualize** workflows as Mermaid flowcharts (steps, decisions, branches, human approvals, etc.) in the browser.
-- **Learn** how to annotate your own workflows for diagramming via the in-app Annotations Guide and **Mermaid to Workflow** wizard.
+- **Learn** both diagramming paths via the in-app **Diagramming Guide** and the **Mermaid to Workflow** wizard (attributes scaffold).
 
-The dashboard does **not** run or execute workflows; it only inspects workflow types and generates diagrams from metadata (attributes).
+The dashboard does **not** run or execute workflows; it only inspects metadata and Mermaid artifacts.
 
-For **attribute-free** discovery from C# source, see the side-by-side Roslyn extractor in [`src/TemporalDashboard.WorkflowDiagramming.Roslyn`](src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md) (library + tests; not yet wired into upload).
+**Attribute-free diagrams:** add [`TemporalDashboard.WorkflowDiagramming.Roslyn.Build`](src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md) to a workflow project, build, and upload the generated diagrams zip. Library API: [`TemporalDashboard.WorkflowDiagramming.Roslyn`](src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md).
 
-**NuGet:** Diagramming packages published to NuGet.org on push to `main`: `TemporalDashboard.WorkflowDiagramming`, `TemporalDashboard.WorkflowDiagramming.Build`, `TemporalDashboard.WorkflowDiagramming.Roslyn`, and `TemporalDashboard.WorkflowDiagramming.Roslyn.Build`. Use attributes + Build for annotated diagrams, or Roslyn.Build for attribute-free source analysis at build time. Install scripts: [scripts/README.md](scripts/README.md).
+**NuGet:** Diagramming packages published to NuGet.org on push to `main`: `TemporalDashboard.WorkflowDiagramming`, `TemporalDashboard.WorkflowDiagramming.Build`, `TemporalDashboard.WorkflowDiagramming.Roslyn`, and `TemporalDashboard.WorkflowDiagramming.Roslyn.Build`. Install scripts: [scripts/README.md](scripts/README.md).
 
 ---
 
@@ -31,7 +33,7 @@ For **attribute-free** discovery from C# source, see the side-by-side Roslyn ext
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TemporalDashboard.Web (Blazor Server)                                    │
 │  • Upload UI, workflow list, diagram viewer                              │
-│  • Learn, Annotations Guide, Mermaid-to-Workflow wizard                  │
+│  • Learn, Diagramming Guide, Mermaid-to-Workflow wizard                  │
 │  • Calls API via HttpClient (ApiClient)                                   │
 └───────────────────────────────────┬─────────────────────────────────────┘
                                     │ HTTP
@@ -47,15 +49,14 @@ For **attribute-free** discovery from C# source, see the side-by-side Roslyn ext
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TemporalDashboard.WorkflowDiagramming (class library)                   │
-│  • Attributes: [WorkflowDiagram], [WorkflowStep], [WorkflowDecision],   │
-│    [WorkflowBranch], [WorkflowTransition], [WorkflowStart], [WorkflowEnd]│
-│  • WorkflowDiagramGenerator.GenerateMermaidDiagram(workflowType)         │
-│  • Depends on Temporalio (for [Workflow]/[WorkflowRun] detection only)   │
+│  • Attributes + WorkflowDiagramGenerator (DLL reflection path)          │
+│  • Shared WorkflowDiagramModel + MermaidDiagramRenderer                 │
+│  • Sibling: WorkflowDiagramming.Roslyn (+ .Roslyn.Build MSBuild task)    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Web** and **Api** are separate processes (different ports). In Docker, the web app talks to the API using the service name and internal port.
-- **WorkflowDiagramming** has no dependency on ASP.NET; it is a pure library used by the API (and by the Web project for the Mermaid-to-Workflow wizard).
+- **WorkflowDiagramming** has no dependency on ASP.NET; it is a pure library used by the API (and by the Web project for the Mermaid-to-Workflow wizard). Roslyn packages sit beside it for attribute-free source → Mermaid.
 
 ---
 
@@ -65,17 +66,17 @@ The app is a Blazor Server UI with a top nav bar and several main pages. Below i
 
 ### Navigation
 
-The sidebar/top nav includes: **Home**, **Learn**, **View Workflows**, **Annotations Guide**, **Mermaid to Workflow**, and **Upload Workflows**. Use **Upload Workflows** first to add a zip of workflow DLLs, then **View Workflows** to see and diagram them.
+The sidebar/top nav includes: **Home**, **Learn**, **View Workflows**, **Diagramming Guide**, **Mermaid to Workflow**, and **Upload Workflows**. Use **Upload Workflows** first to add a zip of workflow DLLs or a diagrams package, then **View Workflows** to see and diagram them.
 
 ### Home
 
-Landing page with two cards: **Upload Workflows** (go to upload) and **View Workflows** (go to the workflow list). A short bullet list explains what the dashboard does.
+Landing page with cards for **Upload**, **View Workflows**, **Diagramming Guide** (attributes vs Roslyn), and **Mermaid to Workflow**. A short bullet list explains what the dashboard does.
 
 ![Home page](docs/screenshots/01-home.png)
 
 ### Upload Workflows
 
-Upload a zip file containing workflow DLLs. Choose a file with the file picker; the app uploads it to the API, which extracts it and keeps only DLLs that contain Temporal workflows (each in a folder named by assembly). Success and error messages appear below the picker. If an assembly folder already exists, you can choose to overwrite or cancel.
+Upload a zip file containing workflow DLLs and/or a `workflow-diagrams.zip` from either Build package (attributes or Roslyn). Choose a file with the file picker; the app uploads it to the API. Success and error messages appear below the picker. If an assembly folder already exists, you can choose to overwrite or cancel.
 
 ![Upload Workflows page](docs/screenshots/02-upload.png)
 
@@ -87,26 +88,25 @@ Table of all discovered workflows: workflow name, diagram display name, and asse
 
 ### Workflow Diagrams
 
-When you click **View** on a workflow, a card opens showing the workflow’s Mermaid flowchart (steps, decisions, branches, etc.). You can close it to return to the table. Diagrams are generated from the workflow’s diagramming attributes.
+When you click **View** on a workflow, a card opens showing the workflow’s Mermaid flowchart (steps, decisions, branches, etc.). You can close it to return to the table. Diagrams come from attributes on an uploaded DLL or from a pre-built diagrams package (attribute Build or Roslyn.Build).
 
 ![Workflow diagrams view](docs/screenshots/04-diagrams.png)
 
 ### Learn
 
-Intro/learning content about the dashboard and Temporal workflow diagramming.
+Intro/learning content about Mermaid, Temporal, and how this dashboard obtains diagrams (attributes vs Roslyn).
 
 ![Learn page](docs/screenshots/05-learn.png)
 
-### Annotations Guide
+### Diagramming Guide
 
-Reference for the C# attributes used to drive diagram generation (`[WorkflowDiagram]`, `[WorkflowStep]`, `[WorkflowTransition]`, etc.). Use this when annotating your own workflows.
+In-app guide covering **both** paths: Roslyn source analysis (no attributes) and the C# attribute set (`[WorkflowDiagram]`, `[WorkflowStep]`, `[WorkflowTransition]`, etc.). Formerly “Annotations Guide”.
 
-![Annotations Guide](docs/screenshots/06-annotations-guide.png)
+![Diagramming Guide](docs/screenshots/06-annotations-guide.png)
 
 ### Mermaid to Workflow
 
-Wizard that helps you go from a Mermaid flowchart to C# workflow code (or understand how Mermaid maps to attributes). Useful when designing new workflows or reverse-engineering a diagram.
-
+Wizard that helps you go from a Mermaid flowchart to C# workflow code with **attributes** applied. For attribute-free Temporal code, use the Roslyn path in the Diagramming Guide instead.
 ![Mermaid to Workflow wizard](docs/screenshots/07-wizard.png)
 
 ---
@@ -175,7 +175,7 @@ temporalDashboard/
 | **TemporalDashboard.WorkflowDiagramming.Roslyn.Build** | MSBuild task that runs Roslyn extraction after `Build` and writes `.mermaid` / metadata / zip under `$(OutputPath)diagrams`. No attributes required. |
 | **TemporalDashboard.WorkflowDiagramming.Build** | MSBuild task that runs at build time to generate `.mermaid` files from a workflow assembly so you can ship diagram content without sharing the DLL. See `src/TemporalDashboard.WorkflowDiagramming.Build/README.md`. |
 | **TemporalDashboard.Api** | ASP.NET Core API: upload zip, list workflows, get Mermaid diagrams per DLL. Uses WorkflowDiscoveryService to load DLLs (with isolated load contexts) and call the diagramming library. |
-| **TemporalDashboard.Web** | Blazor Server app: upload page, workflow list, diagram viewer, Learn, Annotations Guide, Mermaid-to-Workflow wizard. Depends on WorkflowDiagramming; calls API via `ApiClient`. |
+| **TemporalDashboard.Web** | Blazor Server app: upload page, workflow list, diagram viewer, Learn, Diagramming Guide, Mermaid-to-Workflow wizard. Depends on WorkflowDiagramming; calls API via `ApiClient`. |
 | **TemporalDashboard.WorkflowDiagramming.Tests** | Unit tests for attributes and `WorkflowDiagramGenerator`; includes sample workflow classes under `Workflows/`. |
 | **TemporalDashboard.WorkflowDiagramming.Roslyn.Tests** | Unit tests for the Roslyn source extractor (attribute-free Temporal-style fixtures). |
 
@@ -301,12 +301,12 @@ Workflows must be annotated with the diagramming attributes to get meaningful di
 
 ## Documentation for Developers
 
-- **[WORKFLOW_ATTRIBUTES_GUIDE.md](WORKFLOW_ATTRIBUTES_GUIDE.md)** – How to annotate workflows with `[WorkflowDiagram]`, `[WorkflowStep]`, `[WorkflowTransition]`, etc., and how diagram generation uses them.
+- **[WORKFLOW_ATTRIBUTES_GUIDE.md](WORKFLOW_ATTRIBUTES_GUIDE.md)** – Attribute path in detail (plus pointer to Roslyn). In-app: **/guide** Diagramming Guide.
 - **[DOCKER.md](DOCKER.md)** – Docker Compose services, ports, environment variables, and common commands.
 - **src/TemporalDashboard.WorkflowDiagramming/README.md** – Overview of the diagramming library and its attributes.
 - **src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md** – Roslyn source extractor architecture, V1 patterns, and limitations.
 - **src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md** – Build-time Roslyn diagram generation (no attributes).
-- **src/TemporalDashboard.WorkflowDiagramming.Build/README.md** – Build-time diagram generation: use the MSBuild task to emit `.mermaid` files when building your workflow project.
+- **src/TemporalDashboard.WorkflowDiagramming.Build/README.md** – Build-time diagram generation from annotated assemblies.
 - **src/TemporalDashboard.WorkflowDiagramming/Attributes/ATTRIBUTES_SUMMARY.md** – Short summary of the attribute set and design.
 
 ---
@@ -331,7 +331,7 @@ Workflows must be annotated with the diagramming attributes to get meaningful di
 1. Add the attribute class under `TemporalDashboard.WorkflowDiagramming/Attributes`.
 2. In `WorkflowDiagramGenerator`, read the attribute via reflection and extend the Mermaid generation (nodes/edges) accordingly.
 3. Add unit tests and, if useful, a sample workflow in `tests/.../Workflows/`.
-4. Update **WORKFLOW_ATTRIBUTES_GUIDE.md** and the in-app Annotations Guide so users know how to use it.
+4. Update **WORKFLOW_ATTRIBUTES_GUIDE.md** and the in-app Diagramming Guide (`/guide`) so users know how to use it (and how it relates to the Roslyn path).
 
 ### Testing
 

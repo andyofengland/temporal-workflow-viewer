@@ -1,6 +1,19 @@
-# Temporal Workflow Diagramming Attributes - Complete Guide
+# Temporal Workflow Diagramming — Complete Guide
 
-## Overview
+## Two ways to produce diagrams
+
+| | **Attributes** (this guide) | **Roslyn** (source analysis) |
+|--|----------------------------|------------------------------|
+| Code shape | Diagramming attributes on types/methods | Normal Temporal `[WorkflowRun]` bodies |
+| Packages | `TemporalDashboard.WorkflowDiagramming` (+ optional `.Build`) | `TemporalDashboard.WorkflowDiagramming.Roslyn.Build` (or `.Roslyn` API) |
+| Dashboard | Upload annotated DLLs or attribute-Build diagrams zip | Upload Roslyn.Build diagrams zip |
+| Best for | Curated labels, AI/approval styling | Existing code without annotation clutter |
+
+**Prefer Roslyn?** See [src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md) and [Roslyn.Build](src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md), or the in-app **Diagramming Guide** (`/guide`). The rest of this document covers the **attribute** path in detail.
+
+---
+
+## Overview (attributes)
 
 This guide explains how to use the workflow diagramming attributes to automatically generate Mermaid diagrams from your Temporal workflow code. The attributes can be applied to workflow classes and methods to define the workflow structure visually.
 
@@ -533,3 +546,17 @@ When generating workflow code with these attributes:
 8. **Group related attributes** - transitions can be on a separate method for clarity
 
 The generator will automatically create Mermaid diagrams from these attributes when the workflow DLL is uploaded to the dashboard.
+
+---
+
+## Alternate path: Roslyn (no attributes)
+
+If decorating the workflow feels heavy, use **source analysis** instead:
+
+```bash
+dotnet add package TemporalDashboard.WorkflowDiagramming.Roslyn.Build
+dotnet build
+# Upload bin/.../diagrams/workflow-diagrams.zip to the dashboard
+```
+
+Details: [src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md), [Roslyn.Build](src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md).

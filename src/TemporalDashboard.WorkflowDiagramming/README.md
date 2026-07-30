@@ -6,8 +6,11 @@ Workflow diagram generation library for Temporal workflows using Mermaid syntax.
 
 This assembly provides:
 - Workflow diagram attributes for annotating workflow code
-- Mermaid diagram generator that creates visual representations of workflows
+- Shared `WorkflowDiagramModel` + `MermaidDiagramRenderer` (also used by the Roslyn extractor)
+- Mermaid diagram generator from annotated workflow types
 - Support for parallel flows, decisions, branches, and AI-powered activities
+
+**Alternate path (no attributes):** analyze normal Temporal C# with [`TemporalDashboard.WorkflowDiagramming.Roslyn`](../TemporalDashboard.WorkflowDiagramming.Roslyn/) / [`.Roslyn.Build`](../TemporalDashboard.WorkflowDiagramming.Roslyn.Build/).
 
 ## Components
 
@@ -46,6 +49,8 @@ var mermaidDiagram = WorkflowDiagramGenerator.GenerateMermaidDiagram(typeof(MyWo
    - **At runtime:** Call `WorkflowDiagramGenerator.GenerateMermaidDiagram()` with your workflow type and render the Mermaid syntax in your UI (e.g., using Mermaid.js), or
    - **At build time:** Use **TemporalDashboard.WorkflowDiagramming.Build** to generate `.mermaid` files as part of your build so you can ship diagram content without loading the workflow DLL at runtime. See `src/TemporalDashboard.WorkflowDiagramming.Build/README.md`.
 3. Render the Mermaid syntax in your UI (e.g., using Mermaid.js)
+
+For attribute-free build-time generation from source, use **TemporalDashboard.WorkflowDiagramming.Roslyn.Build** instead.
 
 ## Dependencies
 

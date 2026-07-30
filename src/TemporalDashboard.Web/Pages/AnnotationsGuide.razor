@@ -3,32 +3,132 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JSRuntime
 
-<PageTitle>Workflow Diagram Annotations Guide</PageTitle>
+<PageTitle>Workflow Diagramming Guide</PageTitle>
 
 <div class="annotations-guide">
-    <h1 class="mb-4">Workflow Diagram Annotations Guide</h1>
+    <h1 class="mb-4">Workflow Diagramming Guide</h1>
 
     <div class="alert alert-light border mb-4">
         <p class="mb-0">
-            <strong>In brief:</strong> Add special markers (attributes) to your Temporal workflow code so this dashboard can draw a diagram of the workflow automatically. 
-            You mark the workflow itself, each step, and how steps connect. No separate diagram file is needed.
+            <strong>In brief:</strong> There are two ways to produce Mermaid diagrams for Temporal .NET workflows.
+            Use <strong>attributes</strong> when you want curated, richly labeled diagrams in the uploaded DLL.
+            Use <strong>Roslyn</strong> when you want diagrams inferred from normal workflow code (no diagramming attributes) — usually at build time via a NuGet package.
         </p>
     </div>
 
-    <section class="mb-5">
-        <h2>Overview</h2>
+    <section class="mb-5" id="choose-path">
+        <h2>Choose a path</h2>
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 12rem;"></th>
+                        <th>Attributes</th>
+                        <th>Roslyn (source analysis)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th scope="row">What you write</th>
+                        <td>Diagramming attributes on classes/methods (<code>[WorkflowStep]</code>, <code>[WorkflowTransition]</code>, …)</td>
+                        <td>Normal Temporal code (<code>ExecuteActivityAsync</code>, <code>if</code>, <code>Task.WhenAll</code>, …)</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">NuGet packages</th>
+                        <td><code>TemporalDashboard.WorkflowDiagramming</code> (+ optional <code>.Build</code>)</td>
+                        <td><code>TemporalDashboard.WorkflowDiagramming.Roslyn.Build</code> (or <code>.Roslyn</code> library)</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">When diagrams are built</th>
+                        <td>Dashboard upload (DLL reflection) or build-time <code>.Build</code> task</td>
+                        <td>Build-time from C# source (or call the Roslyn API yourself)</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Best for</th>
+                        <td>Polished labels, AI/approval styling, intentional documentation</td>
+                        <td>Existing workflows without reshaping code around annotations</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Dashboard today</th>
+                        <td>Upload annotated DLLs <em>or</em> a diagrams zip from <code>.Build</code></td>
+                        <td>Upload the diagrams zip from <code>Roslyn.Build</code> (source upload not wired yet)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="mb-0">
+            Jump to <a href="#roslyn-path">Roslyn path</a> or <a href="#attributes-path">Attributes path (detailed)</a>.
+            Prefer one path per project; both build tasks default to the same <code>diagrams/</code> folder.
+        </p>
+    </section>
+
+    <section class="mb-5" id="roslyn-path">
+        <h2>Roslyn path — diagrams from normal Temporal code</h2>
         <p>
-            Workflows in this dashboard are discovered from .NET assemblies. To generate a diagram, the workflow class and its steps are decorated with attributes 
+            The Roslyn extractor walks your <code>[WorkflowRun]</code> method body and builds the same Mermaid model used by attributes:
+            activities, child workflows, delays, waits, <code>if</code>/<code>switch</code> decisions, and <code>Task.WhenAll</code>/<code>WhenAny</code> parallelism.
+            You only need Temporal’s <code>[Workflow]</code> and <code>[WorkflowRun]</code> — not the diagramming attributes below.
+        </p>
+
+        <h3 class="h5 mt-4">Build-time (recommended)</h3>
+        <p>Add the development package to the project that contains your workflow sources, then build:</p>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-bash">dotnet add package TemporalDashboard.WorkflowDiagramming.Roslyn.Build
+dotnet build
+# → bin/&lt;Configuration&gt;/net10.0/diagrams/*.mermaid
+# → workflow-diagrams-metadata.json + workflow-diagrams.zip</code></pre>
+        <p class="mt-2">
+            Or use the install script from the repo: <code>./scripts/install-workflow-diagramming-roslyn-build.sh</code>.
+            Upload <code>workflow-diagrams.zip</code> on the <a href="upload">Upload</a> page to view diagrams in this dashboard.
+        </p>
+
+        <h3 class="h5 mt-4">Example: attribute-free workflow</h3>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">using Temporalio.Workflows;
+
+[Workflow]
+public class OrderWorkflow
+{
+    [WorkflowRun]
+    public async Task&lt;string&gt; RunAsync(string orderId)
+    {
+        await Workflow.ExecuteActivityAsync(
+            (OrderActivities a) => a.Validate(orderId),
+            new() { StartToCloseTimeout = TimeSpan.FromMinutes(1) });
+
+        await Workflow.ExecuteActivityAsync(
+            (OrderActivities a) => a.Charge(orderId),
+            new() { StartToCloseTimeout = TimeSpan.FromMinutes(1) });
+
+        return "ok";
+    }
+}</code></pre>
+        <p class="mt-2 text-muted small mb-0">
+            Roslyn produces a skeleton (Start → Validate → Charge → End). For curated labels, AI flags, or approval roles, use the attribute path instead (or later enrichment).
+        </p>
+
+        <h3 class="h5 mt-4">Library API (optional)</h3>
+        <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">using TemporalDashboard.WorkflowDiagramming.Roslyn;
+
+var results = RoslynWorkflowDiagramExtractor.ExtractFromSource(csharpSource);
+foreach (var r in results)
+    Console.WriteLine(r.Mermaid);</code></pre>
+    </section>
+
+    <hr class="my-5" />
+
+    <section class="mb-5" id="attributes-path">
+        <h2>Attributes path — curated diagrams</h2>
+        <p>
+            Workflows in this dashboard can also be discovered from .NET assemblies decorated with attributes
             from <code>TemporalDashboard.WorkflowDiagramming.Attributes</code>. The dashboard reads these at runtime and produces a Mermaid flowchart.
         </p>
         <div class="alert alert-info">
-            <strong>For business users:</strong> Think of attributes as labels you attach to the workflow and to each step. 
+            <strong>For business users:</strong> Think of attributes as labels you attach to the workflow and to each step.
             The labels describe the step name, the type (e.g. “decision” or “approval”), and which step comes next. The dashboard uses that to draw the flow.
         </div>
     </section>
 
     <section class="mb-5">
-        <h2>Getting Started</h2>
+        <h2>Getting Started (attributes)</h2>
         <p>Add these namespaces at the top of your workflow file:</p>
         <pre class="code-block bg-dark text-light p-3 rounded"><code class="language-csharp">using Temporalio.Workflows;
 using TemporalDashboard.WorkflowDiagramming.Attributes;</code></pre>
@@ -37,6 +137,10 @@ using TemporalDashboard.WorkflowDiagramming.Attributes;</code></pre>
             <span class="badge bg-warning text-dark me-2">Technical</span>
             The run method must be the one marked with <code>[WorkflowRun]</code> from Temporal. The diagram start node is attached to that method via <code>[WorkflowStart]</code>.
         </div>
+        <p class="mt-3">
+            Packages: <code>dotnet add package TemporalDashboard.WorkflowDiagramming</code>
+            and optionally <code>TemporalDashboard.WorkflowDiagramming.Build</code> for build-time <code>.mermaid</code> output (same zip upload pattern as Roslyn.Build).
+        </p>
     </section>
 
     <section class="mb-5">
@@ -183,7 +287,7 @@ public class DecisionWorkflow
     </section>
 
     <section class="mb-5">
-        <h2>Best Practices</h2>
+        <h2>Best Practices (attributes)</h2>
         <ul>
             <li><strong>Unique IDs</strong> — Every step needs a unique <code>id</code>; transitions and branches refer to these IDs.</li>
             <li><strong>Order</strong> — Use sequential order numbers (1, 2, 3…) so the diagram layout matches the flow.</li>
@@ -195,7 +299,7 @@ public class DecisionWorkflow
     </section>
 
     <section class="mb-5">
-        <h2>Quick Checklist</h2>
+        <h2>Quick Checklist (attributes)</h2>
         <ul class="list-unstyled">
             <li class="mb-1">☐ <code>using TemporalDashboard.WorkflowDiagramming.Attributes;</code></li>
             <li class="mb-1">☐ <code>[WorkflowDiagram]</code> on the workflow class</li>

@@ -15,5 +15,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - WorkflowDiagramming library: attributes and Mermaid generator.
 - WorkflowDiagramming.Roslyn library: source-based diagram extraction via Roslyn (no diagramming attributes); published to NuGet alongside the core and Build packages.
 - WorkflowDiagramming.Roslyn.Build: MSBuild task that generates Mermaid diagrams from workflow C# source at build time (add package, no app code).
+- Docs and Web UI (Diagramming Guide, Home, Learn, Upload, Wizard) updated for attributes vs Roslyn paths.
 - Docker Compose setup; documentation (README, DOCKER.md, WORKFLOW_ATTRIBUTES_GUIDE.md).
 - CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, LICENSE (MIT).

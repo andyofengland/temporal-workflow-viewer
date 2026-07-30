@@ -9,7 +9,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Upload Workflows</h5>
-                <p class="card-text">Upload a zip file containing workflow DLLs to discover and visualize Temporal workflows.</p>
+                <p class="card-text">Upload a zip of workflow DLLs or a build-time diagrams package (<code>workflow-diagrams.zip</code>) to discover and visualize Temporal workflows.</p>
                 <a href="/upload" class="btn btn-primary">Upload Now</a>
             </div>
         </div>
@@ -26,15 +26,36 @@
 </div>
 
 <div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Diagramming Guide</h5>
+                <p class="card-text">Two ways to produce diagrams: curated <strong>attributes</strong> on your code, or <strong>Roslyn</strong> analysis of normal Temporal workflows (no annotations).</p>
+                <a href="/guide" class="btn btn-outline-primary">Open Guide</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Mermaid to Workflow</h5>
+                <p class="card-text">Paste a Mermaid flowchart and generate a starter C# workflow with diagram attributes applied.</p>
+                <a href="/wizard" class="btn btn-outline-primary">Open Wizard</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
     <div class="col-12">
         <div class="card">
             <div class="card-body">
                 <p>This dashboard allows you to:</p>
-                <ul>
-                    <li>Upload zip files containing Temporal workflow DLLs</li>
-                    <li>Discover workflows automatically from uploaded assemblies</li>
+                <ul class="mb-0">
+                    <li>Upload zip files containing Temporal workflow DLLs <em>or</em> pre-built Mermaid diagram packages</li>
+                    <li>Discover workflows from annotated assemblies or from build-time Roslyn/attribute diagram zips</li>
                     <li>View workflow diagrams in Mermaid format</li>
-                    <li>Explore workflow structures and relationships</li>
+                    <li>Learn either diagramming path in the <a href="/guide">Diagramming Guide</a></li>
                 </ul>
             </div>
         </div>

@@ -2,6 +2,8 @@
 
 This directory contains C# attributes that can be applied to workflow code to automatically generate Mermaid diagrams without needing to parse IL code.
 
+**Prefer not to annotate?** Use Roslyn source analysis instead: [`../TemporalDashboard.WorkflowDiagramming.Roslyn`](../../TemporalDashboard.WorkflowDiagramming.Roslyn/README.md) and [`.Roslyn.Build`](../../TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md), or the in-app Diagramming Guide.
+
 ## Available Attributes
 
 ### Workflow-Level Attributes

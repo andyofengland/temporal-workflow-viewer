@@ -10,6 +10,18 @@
     </p>
 
     <section class="mb-5">
+        <h2 class="mb-3">How this dashboard gets diagrams</h2>
+        <p class="mb-3">
+            Mermaid flowcharts on the View Workflows page come from one of two authoring paths (see the
+            <a href="guide">Diagramming Guide</a>):
+        </p>
+        <ul>
+            <li><strong>Attributes</strong> — decorate Temporal workflows with diagramming attributes, then upload the DLL (or a zip from <code>WorkflowDiagramming.Build</code>).</li>
+            <li><strong>Roslyn</strong> — keep normal Temporal code; add <code>WorkflowDiagramming.Roslyn.Build</code> so <code>dotnet build</code> emits a diagrams zip you can upload (no diagramming attributes).</li>
+        </ul>
+    </section>
+
+    <section class="mb-5">
         <h2 class="mb-3">Mermaid</h2>
         <p class="mb-3">
             <strong>Mermaid</strong> is a JavaScript-based diagramming tool that turns text definitions into diagrams. You write simple, Markdown-inspired syntax (e.g. <code>flowchart TD</code>, <code>A --> B</code>) and Mermaid renders flowcharts, sequence diagrams, and more. It powers the workflow diagrams on this dashboard and is widely used in docs, wikis, and apps.

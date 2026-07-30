@@ -4,6 +4,8 @@
 
 A comprehensive set of C# attributes has been created to enable automatic Mermaid diagram generation from workflow code without needing to parse IL code. These attributes can be applied at the method, property, and class level to define workflow structure.
 
+**Also available:** Roslyn-based extraction from normal Temporal source (no diagramming attributes) via `TemporalDashboard.WorkflowDiagramming.Roslyn` / `.Roslyn.Build`. See the parent library README and the in-app Diagramming Guide.
+
 ## Created Files
 
 ### Attribute Definitions

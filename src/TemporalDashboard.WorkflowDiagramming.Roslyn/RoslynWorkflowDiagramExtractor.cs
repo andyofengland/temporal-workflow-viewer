@@ -138,6 +138,8 @@ internal sealed class WorkflowGraphBuilder
     private readonly WorkflowDiagramModel _model = new() { StartLabel = "Start", Direction = "TD" };
     private readonly List<string> _diagnostics = new();
     private readonly HashSet<string> _usedIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ExpressionSyntax> _deferredLocals = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<string>> _localExits = new(StringComparer.Ordinal);
     private int _order;
     private int _anonCounter;
 
@@ -190,6 +192,11 @@ internal sealed class WorkflowGraphBuilder
         var current = predecessors;
         foreach (var statement in block.Statements)
         {
+            if (ActivePredecessors(current).Count == 0)
+            {
+                break;
+            }
+
             current = AnalyzeStatement(statement, current);
         }
 
@@ -204,9 +211,7 @@ internal sealed class WorkflowGraphBuilder
                 return AnalyzeBlock(nested, predecessors);
 
             case LocalDeclarationStatementSyntax local:
-                return AnalyzeExpressionList(
-                    local.Declaration.Variables.Select(v => v.Initializer?.Value).Where(e => e != null)!,
-                    predecessors);
+                return AnalyzeLocalDeclaration(local, predecessors);
 
             case ExpressionStatementSyntax exprStmt:
                 return AnalyzeExpression(exprStmt.Expression, predecessors);
@@ -216,7 +221,7 @@ internal sealed class WorkflowGraphBuilder
                 {
                     var after = AnalyzeExpression(ret.Expression, predecessors);
                     EnsureEndNode();
-                    foreach (var from in after)
+                    foreach (var from in ActivePredecessors(after))
                     {
                         AddTransition(from, "End");
                     }
@@ -225,7 +230,7 @@ internal sealed class WorkflowGraphBuilder
                 }
 
                 EnsureEndNode();
-                foreach (var from in predecessors)
+                foreach (var from in ActivePredecessors(predecessors))
                 {
                     AddTransition(from, "End");
                 }
@@ -298,11 +303,25 @@ internal sealed class WorkflowGraphBuilder
     private IReadOnlyList<string> AnalyzeExpression(ExpressionSyntax expression, IReadOnlyList<string> predecessors)
     {
         expression = Unwrap(expression);
+        predecessors = ActivePredecessors(predecessors);
 
-        // Assignment: analyze RHS
+        // Assignment: analyze RHS (and rebind deferred locals)
         if (expression is AssignmentExpressionSyntax assign)
         {
+            if (assign.Left is IdentifierNameSyntax id && LooksLikeDeferredTask(assign.Right))
+            {
+                _deferredLocals[id.Identifier.Text] = assign.Right;
+                _localExits.Remove(id.Identifier.Text);
+                return predecessors;
+            }
+
             return AnalyzeExpression(assign.Right, predecessors);
+        }
+
+        // Local / parameter identifier — resolve deferred task bindings (WhenAll / await vars)
+        if (expression is IdentifierNameSyntax ident)
+        {
+            return ResolveLocalIdentifier(ident.Identifier.Text, predecessors);
         }
 
         // await expr
@@ -324,7 +343,7 @@ internal sealed class WorkflowGraphBuilder
                 ? WorkflowStepType.HumanApproval
                 : WorkflowStepType.Activity;
             var id = UniqueId(SanitizeId(label));
-            AddStep(id, label, stepType, kind == TemporalCallKind.Wait ? false : null);
+            AddStep(id, label, stepType);
             foreach (var from in predecessors)
             {
                 AddTransition(from, id);
@@ -333,31 +352,117 @@ internal sealed class WorkflowGraphBuilder
             return [id];
         }
 
-        // Invocation that might be a same-type helper: best-effort inline
-        if (expression is InvocationExpressionSyntax inv &&
-            TryResolveSameTypeHelper(inv, out var helperMethod))
+        if (expression is InvocationExpressionSyntax inv)
         {
-            if (helperMethod.Body != null)
+            // Diagram end marker methods ([WorkflowEnd] or Diagram*End naming)
+            if (TryMatchDiagramEndCall(inv, out var endLabel, out var isSuccess))
             {
-                return AnalyzeBlock(helperMethod.Body, predecessors);
+                EnsureEndNode(endLabel, isSuccess);
+                foreach (var from in predecessors)
+                {
+                    AddTransition(from, "End");
+                }
+
+                return ["End"];
             }
 
-            if (helperMethod.ExpressionBody != null)
+            // TrackActivityAsync("Label", work) → one activity step
+            if (TryMatchTrackActivity(inv, out var trackLabel))
             {
-                return AnalyzeExpression(helperMethod.ExpressionBody.Expression, predecessors);
-            }
-        }
+                var id = UniqueId(SanitizeId(trackLabel));
+                AddStep(id, trackLabel, WorkflowStepType.Activity);
+                foreach (var from in predecessors)
+                {
+                    AddTransition(from, id);
+                }
 
-        // Recurse into arguments of unknown invocations (e.g. wrappers)
-        if (expression is InvocationExpressionSyntax unknownInv)
-        {
-            var current = predecessors;
-            foreach (var arg in unknownInv.ArgumentList.Arguments)
-            {
-                current = AnalyzeExpression(arg.Expression, current);
+                return [id];
             }
 
-            return current;
+            // AwaitAsync(RunWait, condition) → wait / approval node
+            if (TryMatchAwaitAsync(inv, out var waitLabel))
+            {
+                var id = UniqueId(SanitizeId(waitLabel));
+                AddStep(id, waitLabel, WorkflowStepType.HumanApproval);
+                foreach (var from in predecessors)
+                {
+                    AddTransition(from, id);
+                }
+
+                return [id];
+            }
+
+            if (TryResolveSameTypeHelper(inv, out var helperMethod))
+            {
+                // Prefer diagramming attributes on helpers (attribute-level coarseness)
+                if (TryGetDiagramAttributeStep(helperMethod, out var attrId, out var attrLabel, out var attrType))
+                {
+                    // Analyze arguments first (e.g. nested Temporal work). Skip pure attributed utilities
+                    // like BuildCallbackUrl — emitting them per call duplicates nodes / creates fake forks.
+                    var afterArgs = predecessors;
+                    foreach (var arg in inv.ArgumentList.Arguments)
+                    {
+                        if (IsPureAttributedHelperInvocation(arg.Expression))
+                        {
+                            continue;
+                        }
+
+                        afterArgs = AnalyzeExpression(arg.Expression, afterArgs);
+                    }
+
+                    var id = UniqueId(SanitizeId(attrId));
+                    AddStep(id, attrLabel, attrType);
+                    foreach (var from in ActivePredecessors(afterArgs))
+                    {
+                        AddTransition(from, id);
+                    }
+
+                    return [id];
+                }
+
+                // FinishAsync / similar completion helpers → End
+                if (IsTerminalHelperName(helperMethod.Identifier.Text))
+                {
+                    EnsureEndNode();
+                    foreach (var from in predecessors)
+                    {
+                        AddTransition(from, "End");
+                    }
+
+                    return ["End"];
+                }
+
+                // Progress/status and pure utilities — omit
+                if (IsNoiseHelperName(helperMethod.Identifier.Text))
+                {
+                    return predecessors;
+                }
+
+                // Only inline helpers that contain Temporal / diagram primitives
+                if (MethodContainsModelableCalls(helperMethod))
+                {
+                    if (helperMethod.Body != null)
+                    {
+                        return AnalyzeBlock(helperMethod.Body, predecessors);
+                    }
+
+                    if (helperMethod.ExpressionBody != null)
+                    {
+                        return AnalyzeExpression(helperMethod.ExpressionBody.Expression, predecessors);
+                    }
+                }
+
+                return predecessors;
+            }
+
+            // Progress/status side-effects on unresolved calls
+            if (IsNoiseHelperName(GetSimpleInvocationName(inv)))
+            {
+                return predecessors;
+            }
+
+            // Unknown invocation: do not deep-walk arguments (avoids expanding lambdas into noise)
+            return predecessors;
         }
 
         if (expression is ConditionalExpressionSyntax conditional)
@@ -365,18 +470,32 @@ internal sealed class WorkflowGraphBuilder
             return AnalyzeConditional(conditional, predecessors);
         }
 
+        // Object / collection initializers may wrap Temporal calls (rare)
+        if (expression is ObjectCreationExpressionSyntax or AnonymousObjectCreationExpressionSyntax)
+        {
+            return predecessors;
+        }
+
         return predecessors;
     }
 
     private IReadOnlyList<string> AnalyzeIf(IfStatementSyntax ifStmt, IReadOnlyList<string> predecessors)
     {
+        predecessors = ActivePredecessors(predecessors);
+
+        // Early-return / abort guards: happy-path only (omit fail side-exits — keeps Start→End clean)
+        if (ifStmt.Else == null && IsEarlyExitOnlyBody(ifStmt.Statement))
+        {
+            return predecessors;
+        }
+
         // Condition may contain activity calls
         var afterCondition = AnalyzeExpression(ifStmt.Condition, predecessors);
 
         var decisionId = UniqueId("Decision");
-        var label = Truncate(ifStmt.Condition.ToString().Replace("\n", " ").Trim(), 40);
+        var label = Truncate(SanitizeDecisionLabel(ifStmt.Condition.ToString()), 40);
         AddStep(decisionId, label, WorkflowStepType.Decision);
-        foreach (var from in afterCondition)
+        foreach (var from in ActivePredecessors(afterCondition))
         {
             AddTransition(from, decisionId);
         }
@@ -393,12 +512,12 @@ internal sealed class WorkflowGraphBuilder
             elseExits = [decisionId];
         }
 
-        // Collect exit nodes: then path exits + else path exits
+        // Never propagate End (or other terminals) into the continuation join — that made End a parallel hub
         var exits = new List<string>();
-        exits.AddRange(thenExits.Where(e => e != decisionId));
+        exits.AddRange(ActivePredecessors(thenExits).Where(e => e != decisionId));
         if (ifStmt.Else != null)
         {
-            exits.AddRange(elseExits.Where(e => e != decisionId));
+            exits.AddRange(ActivePredecessors(elseExits).Where(e => e != decisionId));
         }
         else
         {
@@ -480,7 +599,7 @@ internal sealed class WorkflowGraphBuilder
                 _model.Transitions.Remove(t);
             }
 
-            exits.AddRange(current.Where(c => c != decisionId));
+            exits.AddRange(current.Where(c => c != decisionId && !IsTerminal(c)));
         }
 
         ConvertDecisionTransitionsToBranches(decisionId);
@@ -489,19 +608,83 @@ internal sealed class WorkflowGraphBuilder
 
     private IReadOnlyList<string> AnalyzeConditional(ConditionalExpressionSyntax conditional, IReadOnlyList<string> predecessors)
     {
+        // Ternaries are usually value selection (messages, flags). Only walk arms for Temporal work —
+        // do not emit a decision diamond (that emptied exit sets for string ternaries and stalled the graph).
         var afterCond = AnalyzeExpression(conditional.Condition, predecessors);
-        var decisionId = UniqueId("Decision");
-        AddStep(decisionId, Truncate(conditional.Condition.ToString(), 40), WorkflowStepType.Decision);
-        foreach (var from in afterCond)
+        var whenTrue = AnalyzeExpression(conditional.WhenTrue, afterCond);
+        var whenFalse = AnalyzeExpression(conditional.WhenFalse, afterCond);
+        var exits = whenTrue.Concat(whenFalse).Where(x => !IsTerminal(x)).Distinct().ToList();
+        return exits.Count > 0 ? exits : afterCond;
+    }
+
+    private IReadOnlyList<string> AnalyzeLocalDeclaration(LocalDeclarationStatementSyntax local, IReadOnlyList<string> predecessors)
+    {
+        var current = predecessors;
+        foreach (var variable in local.Declaration.Variables)
         {
-            AddTransition(from, decisionId);
+            if (variable.Initializer == null)
+            {
+                continue;
+            }
+
+            var init = variable.Initializer.Value;
+            if (LooksLikeDeferredTask(init))
+            {
+                _deferredLocals[variable.Identifier.Text] = init;
+                _localExits.Remove(variable.Identifier.Text);
+                continue;
+            }
+
+            current = AnalyzeExpression(init, current);
         }
 
-        var whenTrue = AnalyzeExpression(conditional.WhenTrue, [decisionId]);
-        var whenFalse = AnalyzeExpression(conditional.WhenFalse, [decisionId]);
-        ConvertDecisionTransitionsToBranches(decisionId);
+        return current;
+    }
 
-        return whenTrue.Concat(whenFalse).Where(x => x != decisionId).Distinct().ToList();
+    private IReadOnlyList<string> ResolveLocalIdentifier(string name, IReadOnlyList<string> predecessors)
+    {
+        if (_localExits.TryGetValue(name, out var cached))
+        {
+            return cached;
+        }
+
+        if (_deferredLocals.TryGetValue(name, out var bound))
+        {
+            var exits = AnalyzeExpression(bound, predecessors);
+            _localExits[name] = exits;
+            return exits;
+        }
+
+        return predecessors;
+    }
+
+    private static bool LooksLikeDeferredTask(ExpressionSyntax expression)
+    {
+        expression = Unwrap(expression);
+        if (expression is AwaitExpressionSyntax)
+        {
+            return false;
+        }
+
+        // var t = RunXAsync(...); var t = AwaitAsync(...); var t = Task.WhenAll(...)
+        if (expression is InvocationExpressionSyntax inv)
+        {
+            var name = GetSimpleInvocationName(inv);
+            if (name is "WhenAll" or "WhenAny")
+            {
+                return true;
+            }
+
+            // Heuristic: Async-suffixed helpers and known wrappers return Task
+            if (name != null &&
+                (name.EndsWith("Async", StringComparison.Ordinal) ||
+                 name is "AwaitAsync" or "TrackActivityAsync"))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private IReadOnlyList<string> AnalyzeParallel(
@@ -514,20 +697,31 @@ internal sealed class WorkflowGraphBuilder
             return predecessors;
         }
 
-        var forkFrom = predecessors;
+        var forkFrom = ActivePredecessors(predecessors);
         var branchEnds = new List<string>();
+        var joinedLocals = new List<string>();
 
         foreach (var arg in args)
         {
             var ends = AnalyzeExpression(arg, forkFrom);
             branchEnds.AddRange(ends);
+            if (Unwrap(arg) is IdentifierNameSyntax id)
+            {
+                joinedLocals.Add(id.Identifier.Text);
+            }
         }
 
         var joinId = UniqueId(isWhenAny ? "WhenAnyJoin" : "WhenAllJoin");
         AddStep(joinId, isWhenAny ? "WhenAny" : "WhenAll", WorkflowStepType.Activity);
-        foreach (var end in branchEnds.Distinct())
+        foreach (var end in ActivePredecessors(branchEnds))
         {
             AddTransition(end, joinId);
+        }
+
+        // Subsequent await taskVar should continue from the join, not re-edge from branch tips
+        foreach (var name in joinedLocals.Distinct(StringComparer.Ordinal))
+        {
+            _localExits[name] = [joinId];
         }
 
         return [joinId];
@@ -776,20 +970,33 @@ internal sealed class WorkflowGraphBuilder
         return null;
     }
 
-    private void EnsureEndNode()
+    private void EnsureEndNode(string? label = null, bool isSuccess = true)
     {
-        if (_model.Steps.Any(s => s.Id == "End"))
+        var existing = _model.Steps.FirstOrDefault(s => s.Id == "End");
+        if (existing != null)
         {
+            if (!string.IsNullOrWhiteSpace(label) && existing.Label is "Complete" or "End")
+            {
+                existing.Label = label;
+            }
+
+            if (!isSuccess)
+            {
+                existing.IsSuccess = false;
+                existing.IsFailure = true;
+            }
+
             return;
         }
 
         _model.Steps.Add(new WorkflowStepModel
         {
             Id = "End",
-            Label = "Complete",
+            Label = string.IsNullOrWhiteSpace(label) ? "Complete" : label!,
             Order = int.MaxValue,
             StepType = WorkflowStepType.End,
-            IsSuccess = true
+            IsSuccess = isSuccess,
+            IsFailure = !isSuccess
         });
         _usedIds.Add("End");
     }
@@ -816,6 +1023,12 @@ internal sealed class WorkflowGraphBuilder
     private void AddTransition(string from, string to)
     {
         if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to) || from == to)
+        {
+            return;
+        }
+
+        // Never continue the graph from a terminal End node
+        if (IsTerminal(from))
         {
             return;
         }
@@ -875,5 +1088,461 @@ internal sealed class WorkflowGraphBuilder
         }
 
         return text[..(max - 1)] + "…";
+    }
+
+    private static string SanitizeDecisionLabel(string text) =>
+        text.Replace("\n", " ").Replace("\r", " ").Replace("\"", "'").Trim();
+
+    private static bool IsTerminal(string id) =>
+        string.Equals(id, "End", StringComparison.Ordinal);
+
+    private static IReadOnlyList<string> ActivePredecessors(IReadOnlyList<string> predecessors) =>
+        predecessors.Where(p => !IsTerminal(p)).Distinct().ToList();
+
+    private static bool IsEarlyExitOnlyBody(StatementSyntax statement) =>
+        ContainsReturnOrThrow(statement) && IsGuardOnlyStatement(statement);
+
+    private static bool ContainsReturnOrThrow(StatementSyntax statement) =>
+        statement.DescendantNodesAndSelf().Any(n => n is ReturnStatementSyntax or ThrowStatementSyntax);
+
+    private static bool IsGuardOnlyStatement(StatementSyntax statement) =>
+        statement switch
+        {
+            ReturnStatementSyntax => true,
+            ThrowStatementSyntax => true,
+            LocalDeclarationStatementSyntax => true,
+            ExpressionStatementSyntax expr => IsGuardOnlyExpression(expr.Expression),
+            BlockSyntax block => block.Statements.Count > 0 && block.Statements.All(IsGuardOnlyStatement),
+            _ => false
+        };
+
+    private static bool IsGuardOnlyExpression(ExpressionSyntax expression)
+    {
+        expression = Unwrap(expression);
+        if (expression is AwaitExpressionSyntax awaitExpr)
+        {
+            expression = Unwrap(awaitExpr.Expression);
+        }
+
+        if (expression is not InvocationExpressionSyntax inv)
+        {
+            // return values / literals are on ReturnStatement; bare expressions in guards are unusual
+            return false;
+        }
+
+        var name = GetSimpleInvocationName(inv);
+        return IsNoiseHelperName(name) ||
+               IsTerminalHelperName(name) ||
+               name is "DiagramFailedEnd" or "DiagramSuccessEnd" or "DiagramEnd";
+    }
+
+    private static bool ContainsTerminalCall(ExpressionSyntax expression)
+    {
+        expression = Unwrap(expression);
+        if (expression is AwaitExpressionSyntax awaitExpr)
+        {
+            expression = Unwrap(awaitExpr.Expression);
+        }
+
+        if (expression is not InvocationExpressionSyntax inv)
+        {
+            return false;
+        }
+
+        var name = GetSimpleInvocationName(inv);
+        return IsTerminalHelperName(name) ||
+               name is "DiagramFailedEnd" or "DiagramSuccessEnd" or "DiagramEnd";
+    }
+
+    private static bool IsTerminalHelperName(string? name) =>
+        name is "FinishAsync" or "Finish" or "CompleteAsync" or "FailAsync";
+
+    private static bool IsNoiseHelperName(string? name) =>
+        name is "SendProgressIfConfigured" or "SendStatusAsync" or "SendStatus" or
+                "LogInformation" or "LogWarning" or "LogError" or "LogDebug";
+
+    private static string? GetSimpleInvocationName(InvocationExpressionSyntax inv) =>
+        inv.Expression switch
+        {
+            IdentifierNameSyntax id => id.Identifier.Text,
+            GenericNameSyntax g => g.Identifier.Text,
+            MemberAccessExpressionSyntax { Name: var n } => n.Identifier.Text,
+            _ => GetInvokedMethodName(inv)
+        };
+
+    private bool TryMatchDiagramEndCall(InvocationExpressionSyntax inv, out string label, out bool isSuccess)
+    {
+        label = "Complete";
+        isSuccess = true;
+
+        if (!TryResolveSameTypeHelper(inv, out var method))
+        {
+            var name = GetSimpleInvocationName(inv);
+            if (name is "DiagramFailedEnd")
+            {
+                label = "Failed";
+                isSuccess = false;
+                return true;
+            }
+
+            if (name is "DiagramSuccessEnd" or "DiagramEnd")
+            {
+                label = name == "DiagramSuccessEnd" ? "Completed" : "Complete";
+                isSuccess = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (TryGetWorkflowEndAttribute(method, out label, out isSuccess))
+        {
+            return true;
+        }
+
+        var methodName = method.Identifier.Text;
+        if (methodName is "DiagramFailedEnd")
+        {
+            label = "Failed";
+            isSuccess = false;
+            return true;
+        }
+
+        if (methodName is "DiagramSuccessEnd" or "DiagramEnd")
+        {
+            label = methodName == "DiagramSuccessEnd" ? "Completed" : "Complete";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMatchTrackActivity(InvocationExpressionSyntax inv, out string label)
+    {
+        label = "Activity";
+        var name = GetSimpleInvocationName(inv);
+        if (name is not "TrackActivityAsync")
+        {
+            return false;
+        }
+
+        if (inv.ArgumentList.Arguments.Count == 0)
+        {
+            return true;
+        }
+
+        var first = Unwrap(inv.ArgumentList.Arguments[0].Expression);
+        if (first is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.StringLiteralExpression))
+        {
+            label = lit.Token.ValueText;
+        }
+
+        return true;
+    }
+
+    private static bool TryMatchAwaitAsync(InvocationExpressionSyntax inv, out string label)
+    {
+        label = "Wait";
+        var name = GetSimpleInvocationName(inv);
+        if (name is not "AwaitAsync")
+        {
+            return false;
+        }
+
+        if (inv.ArgumentList.Arguments.Count == 0)
+        {
+            return true;
+        }
+
+        var first = Unwrap(inv.ArgumentList.Arguments[0].Expression);
+        if (TryExtractRunWaitLabel(first, out var waitLabel))
+        {
+            label = waitLabel;
+        }
+
+        return true;
+    }
+
+    private static bool TryExtractRunWaitLabel(ExpressionSyntax expression, out string label)
+    {
+        label = "Wait";
+        if (expression is not ObjectCreationExpressionSyntax creation)
+        {
+            return false;
+        }
+
+        string? description = null;
+        string? waitName = null;
+        string? kind = null;
+
+        if (creation.Initializer != null)
+        {
+            foreach (var expr in creation.Initializer.Expressions)
+            {
+                if (expr is not AssignmentExpressionSyntax assign ||
+                    assign.Left is not IdentifierNameSyntax prop)
+                {
+                    continue;
+                }
+
+                var value = Unwrap(assign.Right);
+                if (value is not LiteralExpressionSyntax lit ||
+                    !lit.IsKind(SyntaxKind.StringLiteralExpression))
+                {
+                    continue;
+                }
+
+                switch (prop.Identifier.Text)
+                {
+                    case "Description":
+                        description = lit.Token.ValueText;
+                        break;
+                    case "Name":
+                        waitName = lit.Token.ValueText;
+                        break;
+                    case "Kind":
+                        kind = lit.Token.ValueText;
+                        break;
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            label = description!;
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(waitName))
+        {
+            label = string.IsNullOrWhiteSpace(kind) ? waitName! : $"{kind}: {waitName}";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetDiagramAttributeStep(
+        MethodDeclarationSyntax method,
+        out string id,
+        out string label,
+        out WorkflowStepType stepType)
+    {
+        id = method.Identifier.Text;
+        label = method.Identifier.Text;
+        stepType = WorkflowStepType.Activity;
+
+        if (TryGetFirstAttribute(method.AttributeLists, "WorkflowStep", out var stepAttr) &&
+            TryReadIdLabel(stepAttr, out id, out label))
+        {
+            stepType = WorkflowStepType.Activity;
+            if (TryReadStepTypeArg(stepAttr, out var typed))
+            {
+                stepType = typed;
+            }
+
+            return true;
+        }
+
+        if (TryGetFirstAttribute(method.AttributeLists, "WorkflowDecision", out var decAttr) &&
+            TryReadIdLabel(decAttr, out id, out label))
+        {
+            stepType = WorkflowStepType.Decision;
+            return true;
+        }
+
+        if (TryGetFirstAttribute(method.AttributeLists, "WorkflowHumanApproval", out var humAttr) &&
+            TryReadIdLabel(humAttr, out id, out label))
+        {
+            stepType = WorkflowStepType.HumanApproval;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetWorkflowEndAttribute(MethodDeclarationSyntax method, out string label, out bool isSuccess)
+    {
+        label = "Complete";
+        isSuccess = true;
+        if (!TryGetFirstAttribute(method.AttributeLists, "WorkflowEnd", out var attr))
+        {
+            return false;
+        }
+
+        var args = attr.ArgumentList?.Arguments;
+        if (args == null || args.Value.Count == 0)
+        {
+            return true;
+        }
+
+        if (args.Value.Count >= 2 &&
+            args.Value[1].Expression is LiteralExpressionSyntax labLit &&
+            labLit.IsKind(SyntaxKind.StringLiteralExpression))
+        {
+            label = labLit.Token.ValueText;
+        }
+        else if (args.Value[0].Expression is LiteralExpressionSyntax idLit &&
+                 idLit.IsKind(SyntaxKind.StringLiteralExpression))
+        {
+            label = idLit.Token.ValueText;
+        }
+
+        if (args.Value.Count >= 3)
+        {
+            var successExpr = Unwrap(args.Value[2].Expression);
+            if (successExpr.IsKind(SyntaxKind.FalseLiteralExpression))
+            {
+                isSuccess = false;
+            }
+            else if (successExpr.IsKind(SyntaxKind.TrueLiteralExpression))
+            {
+                isSuccess = true;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryGetFirstAttribute(
+        SyntaxList<AttributeListSyntax> attributeLists,
+        string shortName,
+        out AttributeSyntax attribute)
+    {
+        attribute = null!;
+        foreach (var list in attributeLists)
+        {
+            foreach (var attr in list.Attributes)
+            {
+                var name = attr.Name.ToString();
+                var simple = name.Contains('.') ? name[(name.LastIndexOf('.') + 1)..] : name;
+                if (simple.EndsWith("Attribute", StringComparison.Ordinal))
+                {
+                    simple = simple[..^"Attribute".Length];
+                }
+
+                if (string.Equals(simple, shortName, StringComparison.Ordinal))
+                {
+                    attribute = attr;
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryReadIdLabel(AttributeSyntax attr, out string id, out string label)
+    {
+        id = "step";
+        label = "Step";
+        var args = attr.ArgumentList?.Arguments;
+        if (args == null || args.Value.Count == 0)
+        {
+            return false;
+        }
+
+        if (args.Value[0].Expression is LiteralExpressionSyntax idLit &&
+            idLit.IsKind(SyntaxKind.StringLiteralExpression))
+        {
+            id = idLit.Token.ValueText;
+            label = id;
+        }
+        else
+        {
+            return false;
+        }
+
+        if (args.Value.Count >= 2 &&
+            args.Value[1].Expression is LiteralExpressionSyntax labLit &&
+            labLit.IsKind(SyntaxKind.StringLiteralExpression))
+        {
+            label = labLit.Token.ValueText;
+        }
+
+        return true;
+    }
+
+    private static bool TryReadStepTypeArg(AttributeSyntax attr, out WorkflowStepType stepType)
+    {
+        stepType = WorkflowStepType.Activity;
+        var args = attr.ArgumentList?.Arguments;
+        if (args == null || args.Value.Count < 3)
+        {
+            return false;
+        }
+
+        var expr = Unwrap(args.Value[2].Expression).ToString();
+        if (expr.Contains("Decision", StringComparison.Ordinal))
+        {
+            stepType = WorkflowStepType.Decision;
+            return true;
+        }
+
+        if (expr.Contains("HumanApproval", StringComparison.Ordinal))
+        {
+            stepType = WorkflowStepType.HumanApproval;
+            return true;
+        }
+
+        if (expr.Contains("End", StringComparison.Ordinal))
+        {
+            stepType = WorkflowStepType.End;
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool IsPureAttributedHelperInvocation(ExpressionSyntax expression)
+    {
+        expression = Unwrap(expression);
+        if (expression is not InvocationExpressionSyntax inv ||
+            !TryResolveSameTypeHelper(inv, out var method) ||
+            !TryGetDiagramAttributeStep(method, out _, out _, out _))
+        {
+            return false;
+        }
+
+        return !MethodContainsModelableCalls(method);
+    }
+
+    private static bool MethodContainsModelableCalls(MethodDeclarationSyntax method)
+    {
+        var typeDecl = method.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+        HashSet<string>? attributedNames = null;
+        if (typeDecl != null)
+        {
+            attributedNames = typeDecl.Members
+                .OfType<MethodDeclarationSyntax>()
+                .Where(m =>
+                    RoslynWorkflowDiagramExtractor.HasAttribute(m.AttributeLists, "WorkflowStep") ||
+                    RoslynWorkflowDiagramExtractor.HasAttribute(m.AttributeLists, "WorkflowDecision") ||
+                    RoslynWorkflowDiagramExtractor.HasAttribute(m.AttributeLists, "WorkflowHumanApproval") ||
+                    RoslynWorkflowDiagramExtractor.HasAttribute(m.AttributeLists, "WorkflowEnd"))
+                .Select(m => m.Identifier.Text)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+
+        foreach (var inv in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            var name = GetSimpleInvocationName(inv);
+            if (name is "ExecuteActivityAsync" or "ExecuteLocalActivityAsync" or "ExecuteChildWorkflowAsync"
+                or "DelayAsync" or "CreateTimer" or "WaitConditionAsync"
+                or "WhenAll" or "WhenAny"
+                or "TrackActivityAsync" or "AwaitAsync"
+                or "FinishAsync" or "Finish"
+                or "DiagramFailedEnd" or "DiagramSuccessEnd" or "DiagramEnd")
+            {
+                return true;
+            }
+
+            if (name != null && attributedNames != null && attributedNames.Contains(name))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -74,16 +74,23 @@ Also available:
 | `Workflow.ExecuteChildWorkflowAsync` | Activity-like step labeled as child workflow |
 | `Workflow.DelayAsync` / `CreateTimer` | Delay step |
 | `Workflow.WaitConditionAsync` | Human-approval style wait node |
-| `if` / `switch` / ternary | Decision diamond + Yes/No (or case) branches |
-| `Task.WhenAll` / `WhenAny` | Fan-out / fan-in with Parallel edge styling |
+| `TrackActivityAsync("name", …)` | Single activity labeled with the name string |
+| `AwaitAsync(RunWait { Description = … }, …)` | Wait / approval node from `Description` / `Name` |
+| `SendProgressIfConfigured` / `SendStatusAsync` | Omitted (status side-effects) |
+| Helper with `[WorkflowStep]` / `[WorkflowDecision]` / … | Collapsed to one node (attribute-level coarseness) |
+| Early-return validation / abort `if`s | Omitted (happy-path linear graph) |
+| `if` / `switch` with real branches | Decision diamond + Yes/No (or case) branches |
+| Value-only ternaries (`x ? "a" : "b"`) | Ignored (not decisions) |
+| `Task.WhenAll` / `WhenAny` (including task locals) | Fan-out / fan-in with Parallel edge styling |
 | Sequential statements | Linear `Start → … → End` |
-| Same-type private helpers | Best-effort inline of helper body |
+| Same-type private helpers | Inline only when they contain Temporal / diagram primitives |
 
 ## Limitations (v1)
 
 - No cycles for loops (body is approximated sequentially)
 - No deep cross-class helper expansion
-- Dynamic activity names and attribute enrichment are out of scope
+- Dynamic activity names are out of scope
+- Pure attributed utilities used only as arguments (e.g. URL builders) are skipped to avoid duplicate nodes
 - Not wired into Api/Web upload yet — library + tests only
 
 ## Relation to attributes
@@ -91,11 +98,12 @@ Also available:
 | Concern | Attributes | Roslyn |
 |---------|------------|--------|
 | Input | Compiled `[Workflow]` types | C# source |
-| Rich labels / AI / approval roles | Yes | Approximate skeleton |
+| Rich labels / AI / approval roles | Yes | Uses `[WorkflowStep]` labels when present; else SDK call names |
 | Forces diagram-shaped code | Yes | No — normal Temporal code |
-| Dashboard upload today | Yes | Not yet |
+| Granularity | Author-curated steps | Step helpers + activity/wait primitives (not every `if` / status call) |
+| Dashboard upload today | Yes | Via Roslyn.Build metadata or library |
 
-Use attributes when you need curated diagrams; use Roslyn when you want discovery from existing workflow methods.
+Use attributes when you need fully curated diagrams; use Roslyn when you want discovery from existing workflow methods. When both are present, Roslyn prefers `[WorkflowStep]` (etc.) on helpers so graphs stay at attribute-like coarseness.
 
 ## Roadmap
 

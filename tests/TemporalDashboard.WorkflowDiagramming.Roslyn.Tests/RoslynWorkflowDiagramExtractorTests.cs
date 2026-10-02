@@ -198,6 +198,187 @@ public class RoslynWorkflowDiagramExtractorTests
     }
 
     [Fact]
+    public void Early_return_guard_does_not_make_end_a_parallel_hub()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Temporalio.Workflows;
+
+            namespace Sample;
+
+            [Workflow]
+            public class GuardWorkflow
+            {
+                [WorkflowRun]
+                public async Task<string> RunAsync(string? input)
+                {
+                    if (input == null)
+                        return "fail";
+
+                    await Workflow.ExecuteActivityAsync(
+                        (Acts a) => a.Work(),
+                        new() { StartToCloseTimeout = TimeSpan.FromMinutes(1) });
+
+                    return "ok";
+                }
+            }
+            """;
+
+        var mermaid = RoslynWorkflowDiagramExtractor.ExtractFromSource(source)[0].Mermaid;
+        Assert.DoesNotContain("End -->|Parallel|", mermaid);
+        Assert.DoesNotContain("Decision{", mermaid);
+        Assert.Contains("Work", mermaid);
+        Assert.Contains("Start -->", mermaid);
+    }
+
+    [Fact]
+    public void WorkflowStep_helpers_collapse_to_single_nodes()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Temporalio.Workflows;
+            using TemporalDashboard.WorkflowDiagramming.Attributes;
+
+            namespace Sample;
+
+            [Workflow]
+            public class AttributedHelpersWorkflow
+            {
+                [WorkflowRun]
+                public async Task RunAsync()
+                {
+                    await StepOneAsync();
+                    await StepTwoAsync();
+                }
+
+                [WorkflowStep("step-one", "Get ID&V URL from API", 1)]
+                private async Task StepOneAsync()
+                {
+                    await TrackActivityAsync("inner", () => Workflow.ExecuteActivityAsync(
+                        (Acts a) => a.GetUrl(),
+                        new() { StartToCloseTimeout = TimeSpan.FromMinutes(1) }));
+                    await SendProgressIfConfigured();
+                }
+
+                [WorkflowStep("step-two", "Communicate URL", 2)]
+                private async Task StepTwoAsync()
+                {
+                    await Workflow.ExecuteActivityAsync(
+                        (Acts a) => a.Send(),
+                        new() { StartToCloseTimeout = TimeSpan.FromMinutes(1) });
+                }
+
+                private async Task TrackActivityAsync(string name, Func<Task> work) => await work();
+                private Task SendProgressIfConfigured() => Task.CompletedTask;
+            }
+            """;
+
+        var mermaid = RoslynWorkflowDiagramExtractor.ExtractFromSource(source)[0].Mermaid;
+        Assert.Contains("Get ID&V URL from API", mermaid);
+        Assert.Contains("Communicate URL", mermaid);
+        Assert.DoesNotContain("GetUrl", mermaid);
+        Assert.DoesNotContain("SendAsync", mermaid);
+        Assert.DoesNotContain("Decision{", mermaid);
+    }
+
+    [Fact]
+    public void TrackActivity_and_AwaitAsync_helpers_map_to_coarse_steps()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Temporalio.Workflows;
+
+            namespace Sample;
+
+            [Workflow]
+            public class HelperWorkflow
+            {
+                private bool _done;
+
+                [WorkflowRun]
+                public async Task RunAsync()
+                {
+                    await TrackActivityAsync("Get ID&V URL", () => Workflow.ExecuteActivityAsync(
+                        (Acts a) => a.GetIdVUrlAsync(),
+                        new() { StartToCloseTimeout = TimeSpan.FromMinutes(1) }));
+                    await SendProgressIfConfigured();
+                    await AwaitAsync(
+                        new RunWait { Kind = "signal", Name = "idv-callback", Description = "Waiting for the customer to complete identity verification." },
+                        () => _done);
+                }
+
+                private async Task TrackActivityAsync(string name, Func<Task> work) => await work();
+                private Task SendProgressIfConfigured() =>
+                    Workflow.ExecuteActivityAsync((Acts a) => a.SendAsync(), new() { StartToCloseTimeout = TimeSpan.FromSeconds(30) });
+                private async Task AwaitAsync(RunWait wait, Func<bool> condition) =>
+                    await Workflow.WaitConditionAsync(condition);
+            }
+
+            public class RunWait
+            {
+                public string Kind { get; set; }
+                public string Name { get; set; }
+                public string Description { get; set; }
+            }
+            """;
+
+        var mermaid = RoslynWorkflowDiagramExtractor.ExtractFromSource(source)[0].Mermaid;
+        Assert.Contains("Get ID&V URL", mermaid);
+        Assert.Contains("Waiting for the customer to complete identity verification.", mermaid);
+        Assert.DoesNotContain("SendAsync", mermaid);
+        Assert.DoesNotContain("GetIdVUrlAsync", mermaid);
+    }
+
+    [Fact]
+    public void WhenAll_with_task_locals_fans_out_from_shared_predecessors()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Temporalio.Workflows;
+            using TemporalDashboard.WorkflowDiagramming.Attributes;
+
+            namespace Sample;
+
+            [Workflow]
+            public class DeferredParallelWorkflow
+            {
+                private bool _aml;
+
+                [WorkflowRun]
+                public async Task RunAsync()
+                {
+                    await SetupAsync();
+                    var termsTask = RunTermsAsync();
+                    var amlTask = AwaitAsync(
+                        new RunWait { Description = "Waiting for AML approval." },
+                        () => _aml);
+                    await Task.WhenAll(termsTask, amlTask);
+                    await FinishAsync();
+                }
+
+                [WorkflowStep("setup", "Setup", 1)]
+                private Task SetupAsync() => Task.CompletedTask;
+
+                [WorkflowStep("terms-branch", "Terms and Conditions", 2)]
+                private Task RunTermsAsync() => Task.CompletedTask;
+
+                private Task AwaitAsync(RunWait wait, Func<bool> condition) => Task.CompletedTask;
+                private Task FinishAsync() => Task.CompletedTask;
+
+                private sealed class RunWait { public string Description { get; set; } = ""; }
+            }
+            """;
+
+        var mermaid = RoslynWorkflowDiagramExtractor.ExtractFromSource(source)[0].Mermaid;
+        Assert.Contains("Setup", mermaid);
+        Assert.Contains("Terms and Conditions", mermaid);
+        Assert.Contains("Waiting for AML approval.", mermaid);
+        Assert.Contains("WhenAll", mermaid);
+        Assert.Contains("Parallel", mermaid);
+        Assert.DoesNotContain("Start -->|Parallel| End", mermaid);
+    }
+
+    [Fact]
     public void Non_workflow_types_are_ignored()
     {
         const string source = """

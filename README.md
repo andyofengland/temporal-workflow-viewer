@@ -181,6 +181,36 @@ temporalDashboard/
 
 ---
 
+## NuGet packages
+
+### Published packages (this repo → NuGet.org)
+
+These ship on push to `main` (see CI). Install scripts: [scripts/README.md](scripts/README.md).
+
+| Package ID | When to use | Install |
+|------------|-------------|---------|
+| `TemporalDashboard.WorkflowDiagramming` | Annotate workflows with diagramming attributes; generate Mermaid from types | `dotnet add package TemporalDashboard.WorkflowDiagramming` |
+| `TemporalDashboard.WorkflowDiagramming.Build` | Emit `.mermaid` / zip at build time from annotated DLLs | `dotnet add package TemporalDashboard.WorkflowDiagramming.Build` |
+| `TemporalDashboard.WorkflowDiagramming.Roslyn` | Call the Roslyn extractor API from your own tools | `dotnet add package TemporalDashboard.WorkflowDiagramming.Roslyn` |
+| `TemporalDashboard.WorkflowDiagramming.Roslyn.Build` | Emit `.mermaid` / zip at build time from normal Temporal C# (no attributes) | `dotnet add package TemporalDashboard.WorkflowDiagramming.Roslyn.Build` |
+
+Typical consumer setups:
+
+```bash
+# Curated attribute diagrams + build-time output
+dotnet add package TemporalDashboard.WorkflowDiagramming
+dotnet add package TemporalDashboard.WorkflowDiagramming.Build
+# or: ./scripts/install-workflow-diagramming-build.sh
+
+# Attribute-free diagrams from source at build time
+dotnet add package TemporalDashboard.WorkflowDiagramming.Roslyn.Build
+# or: ./scripts/install-workflow-diagramming-roslyn-build.sh
+```
+
+`Roslyn` depends on `WorkflowDiagramming` (shared model + Mermaid renderer). The `.Build` packages are development dependencies (MSBuild tasks); they do not need to ship with your app.
+
+---
+
 ## Prerequisites
 
 - **.NET 10.0 SDK** (for local build and run).  
@@ -343,10 +373,8 @@ Workflows must be annotated with the diagramming attributes to get meaningful di
 - **.NET 10**, C# with nullable reference types.
 - **TemporalDashboard.Api**: ASP.NET Core, minimal hosting, OpenAPI in Development.
 - **TemporalDashboard.Web**: Blazor Server, Bootstrap, Open Iconic.
-- **TemporalDashboard.WorkflowDiagramming**: .NET 10 class library; dependency: **Temporalio** (for `[Workflow]` / `[WorkflowRun]` only).
-- **TemporalDashboard.WorkflowDiagramming.Roslyn**: .NET 10 class library; dependency: **Microsoft.CodeAnalysis.CSharp**; project reference to WorkflowDiagramming.
 - **Diagram output**: Mermaid flowchart syntax, rendered in the browser (e.g. Mermaid.js).
-
+- **Packages / dependencies**: see [NuGet packages](#nuget-packages) above.
 ---
 
 ## License and Contributing

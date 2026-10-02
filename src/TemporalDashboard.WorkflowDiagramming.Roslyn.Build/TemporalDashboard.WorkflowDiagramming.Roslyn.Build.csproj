@@ -29,12 +29,8 @@
   <!-- Pack task dependencies next to the task DLL so MSBuild can load them from the package lib folder -->
   <Target Name="_PackRoslynBuildDependencies" BeforeTargets="$(GenerateNuspecDependsOn)">
     <ItemGroup>
-      <_RoslynBuildDep Include="$(OutputPath)*.dll"
-                       Exclude="$(OutputPath)$(AssemblyName).dll;$(OutputPath)*Tests.dll" />
-      <None Include="@(_RoslynBuildDep)"
-            Pack="true"
-            PackagePath="lib/$(TargetFramework)/%(Filename)%(Extension)"
-            Visible="false" />
+      <_RoslynBuildDep Include="$(OutputPath)*.dll" Exclude="$(OutputPath)$(AssemblyName).dll;$(OutputPath)*Tests.dll" />
+      <None Include="@(_RoslynBuildDep)" Pack="true" PackagePath="lib/$(TargetFramework)/%(Filename)%(Extension)" Visible="false" />
     </ItemGroup>
   </Target>
 

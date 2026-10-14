@@ -10,18 +10,41 @@
 
 <h1>Discovered Workflows</h1>
 
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger" role="alert">
+        @errorMessage
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <div class="alert alert-success" role="alert">
+        @statusMessage
+    </div>
+}
+
+@if (pendingDelete != null)
+{
+    <div class="alert alert-warning" role="alert">
+        <strong>Delete upload?</strong>
+        <p class="mb-2">
+            This removes all workflows from assembly <strong>@pendingDelete.DllName</strong>
+            (the whole uploaded package), not just <strong>@pendingDelete.WorkflowName</strong>.
+        </p>
+        <button type="button" class="btn btn-danger me-2" @onclick="DeleteUpload" disabled="@isDeleting">
+            @(isDeleting ? "Deleting…" : "Delete")
+        </button>
+        <button type="button" class="btn btn-secondary" @onclick="CancelDelete" disabled="@isDeleting">Cancel</button>
+    </div>
+}
+
 @if (isLoading)
 {
     <div class="text-center">
         <div class="spinner-border" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
-    </div>
-}
-else if (errorMessage != null)
-{
-    <div class="alert alert-danger" role="alert">
-        @errorMessage
     </div>
 }
 else if (workflows == null || !workflows.Any())
@@ -54,8 +77,9 @@ else
                                 <td>@wf.WorkflowName</td>
                                 <td>@(string.IsNullOrWhiteSpace(wf.DisplayName) ? "—" : wf.DisplayName)</td>
                                 <td>@wf.DllName</td>
-                                <td>
-                                    <button class="btn btn-sm btn-primary" @onclick="() => ShowDiagram(wf)">View</button>
+                                <td class="text-nowrap">
+                                    <button class="btn btn-sm btn-primary me-1" @onclick="() => ShowDiagram(wf)">View</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(wf)" disabled="@isDeleting">Delete</button>
                                 </td>
                             </tr>
                         }
@@ -97,9 +121,12 @@ else
 @code {
     private List<WorkflowInfo>? workflows;
     private bool isLoading = true;
+    private bool isDeleting;
     private string? errorMessage;
+    private string? statusMessage;
     private WorkflowInfo? selectedWorkflow;
     private WorkflowTypeInfo? selectedDiagram;
+    private WorkflowInfo? pendingDelete;
 
     protected override async Task OnInitializedAsync()
     {
@@ -123,6 +150,53 @@ else
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private void ConfirmDelete(WorkflowInfo wf)
+    {
+        pendingDelete = wf;
+        statusMessage = null;
+        errorMessage = null;
+    }
+
+    private void CancelDelete()
+    {
+        pendingDelete = null;
+    }
+
+    private async Task DeleteUpload()
+    {
+        if (pendingDelete == null)
+            return;
+
+        var assemblyName = pendingDelete.DllName;
+        isDeleting = true;
+        errorMessage = null;
+        statusMessage = null;
+
+        try
+        {
+            await ApiClient.DeleteUploadAsync(assemblyName);
+            if (selectedWorkflow != null &&
+                string.Equals(selectedWorkflow.DllName, assemblyName, StringComparison.Ordinal))
+            {
+                CloseDiagram();
+            }
+
+            pendingDelete = null;
+            statusMessage = $"Deleted upload '{assemblyName}'.";
+            await LoadWorkflows();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting upload {AssemblyName}", assemblyName);
+            errorMessage = $"Could not delete '{assemblyName}': {ex.Message}";
+            pendingDelete = null;
+        }
+        finally
+        {
+            isDeleting = false;
         }
     }
 

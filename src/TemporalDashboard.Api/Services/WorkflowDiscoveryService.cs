@@ -82,7 +82,7 @@ public class WorkflowDiscoveryService
     /// <summary>
     /// Discovers all workflow types from DLLs in the uploads folder and from diagram packages (JSON + Mermaid) in uploads/diagrams.
     /// Results are cached until <see cref="InvalidateCache"/> is called (e.g. after an upload).
-    /// Diagram packages are exposed with DllName "diagrams-&lt;assemblyName&gt;" so they do not collide with DLL-based uploads.
+    /// Diagram packages use the metadata assembly name as <see cref="WorkflowInfo.DllName"/> (same as the project they were generated from).
     /// </summary>
     public List<WorkflowInfo> DiscoverWorkflows()
     {
@@ -140,13 +140,14 @@ public class WorkflowDiscoveryService
                 var meta = JsonSerializer.Deserialize<WorkflowDiagramsMetadataDto>(json);
                 if (meta?.Workflows == null || meta.Workflows.Count == 0)
                     continue;
-                var assemblyName = Path.GetFileName(packagePath);
-                var dllName = DiagramsPackagePrefix + assemblyName;
+                var assemblyName = !string.IsNullOrWhiteSpace(meta.AssemblyName)
+                    ? meta.AssemblyName.Trim()
+                    : Path.GetFileName(packagePath);
                 foreach (var w in meta.Workflows)
                 {
                     workflows.Add(new WorkflowInfo
                     {
-                        DllName = dllName,
+                        DllName = assemblyName,
                         DllPath = packagePath,
                         WorkflowName = w.Name,
                         DisplayName = w.DisplayName ?? string.Empty,
@@ -291,14 +292,15 @@ public class WorkflowDiscoveryService
     }
 
     /// <summary>
-    /// Gets all workflows from a specific DLL or diagram package. dllName may be a DLL identifier (e.g. MyWorkflows) or a diagram package (diagrams-MyWorkflows).
+    /// Gets all workflows from a specific DLL or diagram package.
+    /// <paramref name="dllName"/> is the assembly name from metadata (diagram packages), a DLL file name (e.g. MyWorkflows.dll),
+    /// or a legacy <c>diagrams-*</c> key from older dashboard versions.
     /// </summary>
     public List<WorkflowTypeInfo> GetWorkflowsFromDll(string dllName)
     {
-        if (dllName.StartsWith(DiagramsPackagePrefix, StringComparison.Ordinal))
+        if (TryResolveDiagramsPackageName(dllName, out var packageName))
         {
-            var assemblyName = dllName.Substring(DiagramsPackagePrefix.Length);
-            return GetWorkflowsFromDiagramsPackage(assemblyName);
+            return GetWorkflowsFromDiagramsPackage(packageName);
         }
 
         var assemblyFolderName = Path.GetFileNameWithoutExtension(dllName);
@@ -351,6 +353,40 @@ public class WorkflowDiscoveryService
         }
 
         return workflows;
+    }
+
+    /// <summary>
+    /// Resolves diagram-package keys: bare assembly names, or legacy <c>diagrams-Assembly</c> prefixes.
+    /// DLL file names (*.dll) are left to the DLL loader so a package and a DLL for the same project can coexist.
+    /// </summary>
+    private bool TryResolveDiagramsPackageName(string dllName, out string packageName)
+    {
+        packageName = dllName;
+
+        if (dllName.StartsWith(DiagramsPackagePrefix, StringComparison.Ordinal))
+        {
+            packageName = dllName[DiagramsPackagePrefix.Length..];
+            return DiagramPackageExists(packageName);
+        }
+
+        if (dllName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (DiagramPackageExists(dllName))
+        {
+            packageName = dllName;
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool DiagramPackageExists(string assemblyName)
+    {
+        var metadataPath = Path.Combine(_diagramsPath, SanitizeFolderName(assemblyName), MetadataFileName);
+        return File.Exists(metadataPath);
     }
 
     private List<WorkflowTypeInfo> GetWorkflowsFromDiagramsPackage(string assemblyName)

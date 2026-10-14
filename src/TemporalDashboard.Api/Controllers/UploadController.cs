@@ -326,6 +326,95 @@ public class UploadController : ControllerBase
     }
 
     /// <summary>
+    /// Deletes an uploaded workflow assembly folder or diagram package.
+    /// Pass the assembly name as shown in the UI (e.g. <c>MyWorkflows.dll</c> for a DLL upload,
+    /// or the bare assembly name for a Roslyn/attribute diagram package). Legacy <c>diagrams-*</c> keys are accepted.
+    /// </summary>
+    [HttpDelete("{assemblyName}")]
+    public IActionResult DeleteUpload(string assemblyName)
+    {
+        try
+        {
+            assemblyName = Uri.UnescapeDataString(assemblyName ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(assemblyName) ||
+                assemblyName.Contains("..", StringComparison.Ordinal) ||
+                assemblyName.Contains('/') ||
+                assemblyName.Contains('\\') ||
+                assemblyName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                return BadRequest(new { error = "Invalid assembly name" });
+            }
+
+            if (assemblyName.StartsWith("diagrams-", StringComparison.Ordinal))
+                assemblyName = assemblyName["diagrams-".Length..];
+
+            var isDllUpload = assemblyName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
+            var bareName = Path.GetFileNameWithoutExtension(assemblyName);
+            if (string.IsNullOrWhiteSpace(bareName))
+                return BadRequest(new { error = "Invalid assembly name" });
+
+            var folder = SanitizeFolderName(bareName);
+            var dllFolder = Path.Combine(_uploadsPath, folder);
+            var diagramsFolder = Path.Combine(_discoveryService.GetDiagramsPath(), folder);
+
+            string? deletedPath = null;
+            if (isDllUpload)
+            {
+                if (Directory.Exists(dllFolder) && IsSafeUploadSubfolder(dllFolder, _uploadsPath))
+                {
+                    Directory.Delete(dllFolder, recursive: true);
+                    deletedPath = dllFolder;
+                }
+            }
+            else if (Directory.Exists(diagramsFolder) && IsSafeUploadSubfolder(diagramsFolder, _discoveryService.GetDiagramsPath()))
+            {
+                Directory.Delete(diagramsFolder, recursive: true);
+                deletedPath = diagramsFolder;
+            }
+            else if (Directory.Exists(dllFolder) && IsSafeUploadSubfolder(dllFolder, _uploadsPath))
+            {
+                // Bare name with no diagram package — treat as DLL folder (folder name == assembly name)
+                Directory.Delete(dllFolder, recursive: true);
+                deletedPath = dllFolder;
+            }
+
+            if (deletedPath == null)
+            {
+                return NotFound(new
+                {
+                    error = "Upload not found",
+                    message = $"No uploaded assembly or diagram package named '{assemblyName}'."
+                });
+            }
+
+            _discoveryService.InvalidateCache();
+            _logger.LogInformation("Deleted upload {AssemblyName} at {Path}", assemblyName, deletedPath);
+            return Ok(new
+            {
+                message = "Upload deleted.",
+                deleted = assemblyName,
+                path = deletedPath
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting upload {AssemblyName}", assemblyName);
+            return StatusCode(500, new { error = "Failed to delete upload", message = ex.Message });
+        }
+    }
+
+    private static bool IsSafeUploadSubfolder(string candidatePath, string parentPath)
+    {
+        var fullParent = Path.GetFullPath(parentPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                         + Path.DirectorySeparatorChar;
+        var fullCandidate = Path.GetFullPath(candidatePath);
+        return fullCandidate.StartsWith(fullParent, StringComparison.OrdinalIgnoreCase)
+               && !string.Equals(fullCandidate.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                   fullParent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Gets information about uploaded files
     /// </summary>
     [HttpGet("info")]

@@ -131,4 +131,39 @@ public class ApiClient
             throw;
         }
     }
+
+    public async Task DeleteUploadAsync(string assemblyName)
+    {
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"api/upload/{Uri.EscapeDataString(assemblyName)}");
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                throw new FileNotFoundException($"Upload not found: {assemblyName}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                var message = response.ReasonPhrase ?? "Delete failed";
+                try
+                {
+                    var errorObj = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
+                    if (errorObj.TryGetProperty("message", out var messageProp))
+                        message = messageProp.GetString() ?? message;
+                    else if (errorObj.TryGetProperty("error", out var errorProp))
+                        message = errorProp.GetString() ?? message;
+                }
+                catch { /* use status phrase */ }
+                throw new HttpRequestException(message);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting upload {AssemblyName}", assemblyName);
+            throw;
+        }
+    }
 }

@@ -1,62 +1,84 @@
 # Temporal Dashboard
 
-A web application for discovering and visualizing [Temporal](https://temporal.io/) workflows from .NET assemblies. Upload a zip of workflow DLLs **or** a build-time Mermaid diagram package, and the dashboard renders **Mermaid** flowcharts so you can see workflow structure without reading code.
+A **multi-language** repository for discovering and visualizing [Temporal](https://temporal.io/) workflows. One Blazor dashboard and API sit on top of a shared Mermaid diagram package format; **per-language extractors** produce that package from Temporal SDKs so the UI stays the same whether workflows are written in .NET, TypeScript, Go, Java, Python, or Kotlin.
 
-Diagrams can come from **diagramming attributes** on the DLL, or from **Roslyn source analysis** at build time (no attributes) via `workflow-diagrams.zip`.
+Upload a zip of .NET workflow DLLs **or** any extractor’s `workflow-diagrams.zip`, and the dashboard renders flowcharts without running the workflows.
+
+---
+
+## Multi-language repository
+
+This is not a .NET-only codebase. Layout under `src/`:
+
+| Area | Role |
+|------|------|
+| **`src/shared/`** | Language-agnostic contract: `packageName` metadata + Mermaid files ([schema](src/shared/workflow-diagrams-metadata.schema.json), [docs](src/shared/README.md)) |
+| **`src/dotnet/`** | .NET attributes, Roslyn source analysis, MSBuild build tasks (NuGet packages) |
+| **`src/typescript/`**, **`src/go/`**, **`src/java/`**, **`src/python/`**, **`src/kotlin/`** | Source extractors / CLIs for each Temporal SDK |
+| **`src/TemporalDashboard.Api/`** + **`src/TemporalDashboard.Web/`** | Unified upload / discover / view UI (consumes the shared package) |
+
+Every extractor emits the same zip shape (`workflow-diagrams-metadata.json` + `*.mermaid`). Product-level changes to that contract or extractor behavior should be applied across **all** languages (language-specific defect fixes may stay local) — see [AGENTS.md](AGENTS.md).
+
+| Language | Extractor | Docs |
+|----------|-----------|------|
+| .NET / C# | `src/dotnet/` (attributes, Roslyn, MSBuild) | [Roslyn](src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md), [Roslyn.Build](src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md) |
+| TypeScript | `src/typescript/workflow-diagramming` | [README](src/typescript/workflow-diagramming/README.md) |
+| Go | `src/go/workflowdiagramming` | [README](src/go/workflowdiagramming/README.md) |
+| Java | `src/java/workflow-diagramming` | [README](src/java/workflow-diagramming/README.md) |
+| Python | `src/python/workflow_diagramming` | [README](src/python/workflow_diagramming/README.md) |
+| Kotlin | `src/kotlin/workflow-diagramming` | [README](src/kotlin/workflow-diagramming/README.md) |
 
 ---
 
 ## What is Temporal?
 
-[Temporal](https://temporal.io/) is an open-source workflow engine that lets you write durable, long-running business logic as code. Instead of hand-rolling state machines, retries, and timers, you define **workflows** (the overall orchestration) and **activities** (the units of work). Temporal handles execution, retries, timeouts, and persistence so workflows survive process restarts and failures. It supports multiple languages and SDKs, including .NET. This dashboard works with **Temporal .NET workflows**: it loads your workflow assemblies (or pre-built diagram packages) and shows how your workflows are defined without running them.
+[Temporal](https://temporal.io/) is an open-source workflow engine that lets you write durable, long-running business logic as code. Instead of hand-rolling state machines, retries, and timers, you define **workflows** (the overall orchestration) and **activities** (the units of work). Temporal handles execution, retries, timeouts, and persistence so workflows survive process restarts and failures. Official SDKs span several languages; this repo mirrors that with extractors per SDK and one viewer for all of them.
 
 ---
 
 ## What This Project Does
 
-- **Upload** zip files containing Temporal workflow DLLs and/or `workflow-diagrams.zip` packages from the Build / Roslyn.Build MSBuild tasks.
-- **Discover** workflow types by loading assemblies (attributes) or by reading diagram packages (attribute or Roslyn build output).
-- **Visualize** workflows as Mermaid flowcharts (steps, decisions, branches, human approvals, etc.) in the browser.
-- **Learn** both diagramming paths via the in-app **Diagramming Guide** and the **Mermaid to Workflow** wizard (attributes scaffold).
+- **Extract** workflow diagrams from Temporal source (or annotated .NET assemblies) using language-specific tools under `src/{dotnet,typescript,go,java,python,kotlin}`.
+- **Upload** zip files containing .NET workflow DLLs and/or a shared `workflow-diagrams.zip` from any extractor.
+- **Discover** workflows from uploaded DLLs (attributes) or diagram packages (`packageName` metadata).
+- **Visualize** workflows as Mermaid flowcharts in one browser UI, regardless of implementation language.
+- **Learn** .NET diagramming paths via the in-app **Diagramming Guide** and the **Mermaid to Workflow** wizard (C# attributes scaffold).
 
 The dashboard does **not** run or execute workflows; it only inspects metadata and Mermaid artifacts.
 
-**Attribute-free diagrams:** add [`TemporalDashboard.WorkflowDiagramming.Roslyn.Build`](src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md) to a workflow project, build, and upload the generated diagrams zip. Library API: [`TemporalDashboard.WorkflowDiagramming.Roslyn`](src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md).
+**.NET:** attribute packages and attribute-free Roslyn build — [`TemporalDashboard.WorkflowDiagramming.Roslyn.Build`](src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md). **NuGet** publish on `main`: see [scripts/README.md](scripts/README.md).
 
-**NuGet:** Diagramming packages published to NuGet.org on push to `main`: `TemporalDashboard.WorkflowDiagramming`, `TemporalDashboard.WorkflowDiagramming.Build`, `TemporalDashboard.WorkflowDiagramming.Roslyn`, and `TemporalDashboard.WorkflowDiagramming.Roslyn.Build`. Install scripts: [scripts/README.md](scripts/README.md).
+**Other languages:** run that SDK’s extractor CLI, then upload the generated zip to the same Upload page.
 
 ---
 
 ## Architecture Overview
 
 ```
+  Language extractors (any SDK)
+  ┌──────────┐ ┌────┐ ┌──────┐ ┌────────┐ ┌────────┐ ┌────────┐
+  │  .NET    │ │ TS │ │  Go  │ │  Java  │ │ Python │ │ Kotlin │
+  └────┬─────┘ └──┬─┘ └──┬───┘ └───┬────┘ └───┬────┘ └───┬────┘
+       │          │      │         │          │          │
+       └──────────┴──────┴────┬────┴──────────┴──────────┘
+                              │ same zip contract (src/shared)
+                              ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TemporalDashboard.Web (Blazor Server)                                    │
 │  • Upload UI, workflow list, diagram viewer                              │
-│  • Learn, Diagramming Guide, Mermaid-to-Workflow wizard                  │
-│  • Calls API via HttpClient (ApiClient)                                   │
 └───────────────────────────────────┬─────────────────────────────────────┘
                                     │ HTTP
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TemporalDashboard.Api (ASP.NET Core)                                    │
-│  • POST /api/upload/zip  → extract zip, keep workflow DLLs, store       │
-│  • GET /api/workflows    → discover all workflows from uploads          │
-│  • GET /api/workflows/{dll}/diagrams → Mermaid for each workflow in DLL  │
-│  • WorkflowDiscoveryService: loads DLLs in collectible ALC, reflects      │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │ uses
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  TemporalDashboard.WorkflowDiagramming (class library)                   │
-│  • Attributes + WorkflowDiagramGenerator (DLL reflection path)          │
-│  • Shared WorkflowDiagramModel + MermaidDiagramRenderer                 │
-│  • Sibling: WorkflowDiagramming.Roslyn (+ .Roslyn.Build MSBuild task)    │
+│  • POST /api/upload/zip  → DLLs and/or diagram packages                 │
+│  • GET /api/workflows    → discover uploads                             │
+│  • GET /api/workflows/{name}/diagrams → Mermaid                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Web** and **Api** are separate processes (different ports). In Docker, the web app talks to the API using the service name and internal port.
-- **WorkflowDiagramming** has no dependency on ASP.NET; it is a pure library used by the API (and by the Web project for the Mermaid-to-Workflow wizard). Roslyn packages sit beside it for attribute-free source → Mermaid.
+- Extractors never talk to the UI directly; they only need to emit the shared package format.
 
 ---
 
@@ -114,54 +136,26 @@ Wizard that helps you go from a Mermaid flowchart to C# workflow code with **att
 ## Repository Structure
 
 ```
-temporalDashboard/
+temporal-workflow-viewer/
 ├── src/
-│   ├── TemporalDashboard.WorkflowDiagramming/   # Core diagramming (attributes + Mermaid generator)
-│   │   ├── Attributes/                           # [WorkflowDiagram], [WorkflowStep], etc.
-│   │   ├── Models/                               # Shared WorkflowDiagramModel
-│   │   ├── MermaidDiagramRenderer.cs             # Model → Mermaid string
-│   │   ├── WorkflowDiagramGenerator.cs           # Reflection → Mermaid string
-│   │   └── README.md                             # Library overview
-│   ├── TemporalDashboard.WorkflowDiagramming.Roslyn/  # Source-based extractor (no attributes)
-│   │   ├── RoslynWorkflowDiagramExtractor.cs
-│   │   └── README.md                             # Architecture + V1 patterns
-│   ├── TemporalDashboard.WorkflowDiagramming.Roslyn.Build/  # MSBuild: Roslyn → .mermaid at build
-│   │   ├── GenerateRoslynWorkflowDiagramsTask.cs
-│   │   └── TemporalDashboard.WorkflowDiagramming.Roslyn.Build.targets
-│   ├── TemporalDashboard.WorkflowDiagramming.Build/  # MSBuild task: generate .mermaid at build time
-│   │   ├── GenerateWorkflowDiagramsTask.cs       # Custom MSBuild task
-│   │   └── TemporalDashboard.WorkflowDiagramming.Build.targets
-│   ├── TemporalDashboard.Api/                    # REST API (upload + workflow discovery)
-│   │   ├── Controllers/                          # UploadController, WorkflowsController
-│   │   ├── Services/                             # WorkflowDiscoveryService (DLL load + reflect)
-│   │   ├── Models/                               # WorkflowInfo, WorkflowTypeInfo, WorkflowDllInfo
-│   │   └── Program.cs
-│   └── TemporalDashboard.Web/                   # Blazor Server UI
-│       ├── Pages/                                # Index, Upload, Workflows, Learn, Wizard, AnnotationsGuide
-│       ├── Services/                             # ApiClient, MermaidToWorkflowGenerator
-│       ├── Shared/                               # MainLayout, NavMenu
-│       └── wwwroot/                              # CSS, static assets
+│   ├── shared/                                   # Language-agnostic package schema + contract docs
+│   ├── dotnet/                                   # .NET diagramming + extractors
+│   │   ├── TemporalDashboard.WorkflowDiagramming/          # Attributes + Mermaid generator
+│   │   ├── TemporalDashboard.WorkflowDiagramming.Build/    # MSBuild: attributes → .mermaid
+│   │   ├── TemporalDashboard.WorkflowDiagramming.Roslyn/   # Roslyn source extractor
+│   │   └── TemporalDashboard.WorkflowDiagramming.Roslyn.Build/
+│   ├── typescript/workflow-diagramming/          # TypeScript extractor CLI
+│   ├── go/workflowdiagramming/                   # Go extractor CLI
+│   ├── java/workflow-diagramming/                # Java extractor CLI
+│   ├── python/workflow_diagramming/              # Python extractor CLI
+│   ├── kotlin/workflow-diagramming/              # Kotlin extractor CLI
+│   ├── TemporalDashboard.Api/                    # REST API (upload + discovery)
+│   └── TemporalDashboard.Web/                    # Blazor Server UI
 ├── tests/
-│   ├── TemporalDashboard.WorkflowDiagramming.Tests/
-│   │   ├── Workflows/                            # Sample workflows used in tests
-│   │   └── *Tests.cs                             # Unit tests for attributes and generator
-│   └── TemporalDashboard.WorkflowDiagramming.Roslyn.Tests/
-│       └── *Tests.cs                             # Source-string fixtures for Roslyn extractor
-├── .github/
-│   └── workflows/
-│       └── ci.yml                                # Build and test on push/PR
-├── docs/
-│   └── screenshots/                              # UI screenshots for README (replace placeholders)
-├── CONTRIBUTING.md                                # How to contribute
-├── CODE_OF_CONDUCT.md                             # Contributor Covenant
-├── SECURITY.md                                    # How to report vulnerabilities
-├── CHANGELOG.md                                   # Version history
+│   └── dotnet/                                   # .NET unit tests for attributes + Roslyn
+├── .github/workflows/ci.yml
 ├── TemporalDashboard.sln
-├── docker-compose.yml                            # Web + API + volumes
-├── DOCKER.md                                     # Docker usage and ports
-├── WORKFLOW_ATTRIBUTES_GUIDE.md                  # Full guide to annotating workflows
-├── LICENSE                                       # MIT license
-└── README.md                                     # This file
+└── README.md
 ```
 
 ---
@@ -170,13 +164,14 @@ temporalDashboard/
 
 | Project | Purpose |
 |--------|---------|
-| **TemporalDashboard.WorkflowDiagramming** | Defines C# attributes for workflow diagram metadata and generates Mermaid flowchart text from workflow types. Exposes shared `WorkflowDiagramModel` + `MermaidDiagramRenderer`. No UI or HTTP. |
-| **TemporalDashboard.WorkflowDiagramming.Roslyn** | Roslyn extractor: builds the same diagram model from Temporal workflow C# source without diagramming attributes. See `src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md`. |
-| **TemporalDashboard.WorkflowDiagramming.Roslyn.Build** | MSBuild task that runs Roslyn extraction after `Build` and writes `.mermaid` / metadata / zip under `$(OutputPath)diagrams`. No attributes required. |
-| **TemporalDashboard.WorkflowDiagramming.Build** | MSBuild task that runs at build time to generate `.mermaid` files from a workflow assembly so you can ship diagram content without sharing the DLL. See `src/TemporalDashboard.WorkflowDiagramming.Build/README.md`. |
-| **TemporalDashboard.Api** | ASP.NET Core API: upload zip, list workflows, get Mermaid diagrams per DLL. Uses WorkflowDiscoveryService to load DLLs (with isolated load contexts) and call the diagramming library. |
-| **TemporalDashboard.Web** | Blazor Server app: upload page, workflow list, diagram viewer, Learn, Diagramming Guide, Mermaid-to-Workflow wizard. Depends on WorkflowDiagramming; calls API via `ApiClient`. |
-| **TemporalDashboard.WorkflowDiagramming.Tests** | Unit tests for attributes and `WorkflowDiagramGenerator`; includes sample workflow classes under `Workflows/`. |
+| **src/shared** | Shared `workflow-diagrams-metadata.json` schema (`packageName`, …) consumed by every language extractor and the dashboard. |
+| **src/dotnet/…WorkflowDiagramming** | C# attributes + Mermaid generator (`WorkflowDiagramModel`). |
+| **src/dotnet/…Roslyn** | Roslyn extractor from Temporal C# source (no diagramming attributes). |
+| **src/dotnet/…Roslyn.Build / …Build** | MSBuild tasks writing `.mermaid` + metadata zip at build time. |
+| **src/typescript|go|java|python|kotlin** | Per-language source extractors → same diagram package format. |
+| **TemporalDashboard.Api** | ASP.NET Core API: upload zip, list workflows, get Mermaid diagrams. |
+| **TemporalDashboard.Web** | Blazor Server UI. |
+| **tests/dotnet/…** | Unit tests for attributes and Roslyn extractors. |
 | **TemporalDashboard.WorkflowDiagramming.Roslyn.Tests** | Unit tests for the Roslyn source extractor (attribute-free Temporal-style fixtures). |
 
 ---
@@ -213,9 +208,10 @@ dotnet add package TemporalDashboard.WorkflowDiagramming.Roslyn.Build
 
 ## Prerequisites
 
-- **.NET 10.0 SDK** (for local build and run).  
+- **.NET 10.0 SDK** (dashboard Web/API and `src/dotnet` packages).  
   Check: `dotnet --version`
 - **Docker Desktop** (or Docker Engine + Docker Compose) if you want to run via Docker.
+- **Per-language tooling** only if you develop or run that extractor (Node for TypeScript, Go toolchain, JDK/Maven or Gradle for Java/Kotlin, Python 3, etc.). See each extractor’s README.
 
 ---
 
@@ -267,8 +263,8 @@ dotnet test
 To run only the diagramming tests:
 
 ```bash
-dotnet test tests/TemporalDashboard.WorkflowDiagramming.Tests/TemporalDashboard.WorkflowDiagramming.Tests.csproj
-dotnet test tests/TemporalDashboard.WorkflowDiagramming.Roslyn.Tests/TemporalDashboard.WorkflowDiagramming.Roslyn.Tests.csproj
+dotnet test tests/dotnet/TemporalDashboard.WorkflowDiagramming.Tests/TemporalDashboard.WorkflowDiagramming.Tests.csproj
+dotnet test tests/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn.Tests/TemporalDashboard.WorkflowDiagramming.Roslyn.Tests.csproj
 ```
 
 ---
@@ -333,11 +329,12 @@ Workflows must be annotated with the diagramming attributes to get meaningful di
 
 - **[WORKFLOW_ATTRIBUTES_GUIDE.md](WORKFLOW_ATTRIBUTES_GUIDE.md)** – Attribute path in detail (plus pointer to Roslyn). In-app: **/guide** Diagramming Guide.
 - **[DOCKER.md](DOCKER.md)** – Docker Compose services, ports, environment variables, and common commands.
-- **src/TemporalDashboard.WorkflowDiagramming/README.md** – Overview of the diagramming library and its attributes.
-- **src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md** – Roslyn source extractor architecture, V1 patterns, and limitations.
-- **src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md** – Build-time Roslyn diagram generation (no attributes).
-- **src/TemporalDashboard.WorkflowDiagramming.Build/README.md** – Build-time diagram generation from annotated assemblies.
-- **src/TemporalDashboard.WorkflowDiagramming/Attributes/ATTRIBUTES_SUMMARY.md** – Short summary of the attribute set and design.
+- **src/shared/README.md** – Multi-language diagram package contract (`packageName`).
+- **src/dotnet/TemporalDashboard.WorkflowDiagramming/README.md** – .NET diagramming library and attributes.
+- **src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md** – Roslyn source extractor.
+- **src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md** – Build-time Roslyn generation.
+- **src/dotnet/TemporalDashboard.WorkflowDiagramming.Build/README.md** – Build-time attribute generation.
+- **src/{typescript,go,java,python,kotlin}/** – Per-language extractor READMEs.
 
 ---
 

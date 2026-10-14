@@ -30,3 +30,22 @@ When a change is breaking:
 3. Update the README and any affected guide (for example [WORKFLOW_ATTRIBUTES_GUIDE.md](WORKFLOW_ATTRIBUTES_GUIDE.md)) in the same change.
 
 If a change is compatible, say that it is not breaking when the risk is easy to miss (public types, package output, API responses, or diagram format).
+
+## Multi-language extractors
+
+Diagram extractors live under language folders:
+
+- `src/dotnet/`
+- `src/typescript/`
+- `src/go/`
+- `src/java/`
+- `src/python/`
+- `src/kotlin/`
+
+They share one package contract (`src/shared/`: `packageName`, Mermaid + `workflow-diagrams-metadata.json`).
+
+**Parity rule:** if you change behavior, output shape, CLI flags, detection patterns (at the product level), docs, or the shared schema for one language, apply the same change to **all** language extractors in the same change set.
+
+**Exception:** defect fixes that only apply to one language (parser bugs, language-specific SDK quirks, build/tooling issues) may stay local to that language. Say so when summarizing the change.
+
+When in doubt, prefer updating every language rather than leaving them inconsistent.

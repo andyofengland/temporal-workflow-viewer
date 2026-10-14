@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andyofengland/temporal-workflow-viewer/src/shared/workflow-diagrams-metadata.schema.json",
+  "title": "WorkflowDiagramsMetadata",
+  "description": "Shared zip/directory contract for Temporal workflow diagram packages. Language extractors write this as workflow-diagrams-metadata.json alongside one *.mermaid file per workflow. The dashboard UI consumes this format regardless of source language.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["packageName", "language", "buildDateUtc", "generator", "workflows"],
+  "properties": {
+    "packageName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Primary package / project identity. Do not use assemblyName when writing new packages."
+    },
+    "packageVersion": {
+      "type": "string",
+      "description": "Package or project version string."
+    },
+    "packagePath": {
+      "type": ["string", "null"],
+      "description": "Optional path to the scanned package or project root."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["TypeScript", "Go", "Java", "Python", "Kotlin", "C#"],
+      "description": "Source language of the workflows that produced this package."
+    },
+    "targetFramework": {
+      "type": ["string", "null"],
+      "description": "Optional runtime / SDK target (e.g. node20, go1.22, jdk17, python3.11)."
+    },
+    "buildDateUtc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp when the diagrams were generated."
+    },
+    "generator": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Extractor identity and version, e.g. workflow-diagramming-typescript/0.1.0."
+    },
+    "workflows": {
+      "type": "array",
+      "description": "One entry per emitted Mermaid diagram.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "diagramFile"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Workflow type / function name."
+          },
+          "displayName": {
+            "type": ["string", "null"],
+            "description": "Optional human-readable label."
+          },
+          "diagramFile": {
+            "type": "string",
+            "pattern": "^.+\\.mermaid$",
+            "description": "Relative filename of the Mermaid diagram inside the package (e.g. OrderWorkflow.mermaid)."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "packageName": "order-workflows",
+      "packageVersion": "1.0.0",
+      "packagePath": "/src/workflows",
+      "language": "TypeScript",
+      "targetFramework": "node20",
+      "buildDateUtc": "2026-10-14T12:00:00.000Z",
+      "generator": "@temporal-dashboard/workflow-diagramming-typescript/0.1.0",
+      "workflows": [
+        {
+          "name": "orderWorkflow",
+          "displayName": "orderWorkflow",
+          "diagramFile": "orderWorkflow.mermaid"
+        }
+      ]
+    }
+  ]
+}

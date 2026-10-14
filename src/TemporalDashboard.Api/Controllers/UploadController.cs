@@ -279,7 +279,9 @@ public class UploadController : ControllerBase
         if (meta?.Workflows == null || meta.Workflows.Count == 0)
             return (false, false, string.Empty, 0, new List<string>());
 
-        var assemblyName = (meta.AssemblyName ?? Path.GetFileName(Path.GetDirectoryName(metadataPath)) ?? "Unknown").Trim();
+        var assemblyName = !string.IsNullOrWhiteSpace(meta.EffectivePackageName)
+            ? meta.EffectivePackageName
+            : (Path.GetFileName(Path.GetDirectoryName(metadataPath)) ?? "Unknown").Trim();
         if (string.IsNullOrEmpty(assemblyName))
             return (false, false, string.Empty, 0, new List<string>());
 

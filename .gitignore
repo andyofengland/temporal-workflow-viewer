@@ -84,3 +84,15 @@ Desktop.ini
 
 # Local overrides (optional; uncomment if you use local docker overrides you don't want to commit)
 # docker-compose.local.yml
+
+# Multi-language extractors
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+**/venv/
+**/target/
+**/.gradle/
+**/build/
+!**/src/**/build.gradle.kts
+*.class

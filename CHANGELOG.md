@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Multi-language workflow diagram extractors (TypeScript, Go, Java, Python, Kotlin) under `src/{typescript,go,java,python,kotlin}` plus shared zip metadata schema in `src/shared/`. Each CLI scans language-specific Temporal patterns and emits `workflow-diagrams-metadata.json` + `*.mermaid` (optional zip). Compatible with the existing dashboard upload contract.
+
+### Changed
+
+- .NET diagramming libraries moved under `src/dotnet/` (tests under `tests/dotnet/`) for consistency with other language extractors.
+- Diagram package metadata primary identity renamed from `assemblyName` to `packageName` (also `packageVersion` / `packagePath`). Readers still accept legacy `assemblyName` fields.
 - Initial open-source release: Temporal Dashboard for discovering and visualizing Temporal .NET workflows.
 - Upload zip of workflow DLLs, discover workflows, generate Mermaid diagrams from diagramming attributes.
 - Blazor Web UI: Home, Upload, View Workflows, Learn, Annotations Guide, Mermaid to Workflow wizard.

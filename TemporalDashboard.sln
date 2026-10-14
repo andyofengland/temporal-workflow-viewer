@@ -5,23 +5,25 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming", "src\TemporalDashboard.WorkflowDiagramming\TemporalDashboard.WorkflowDiagramming.csproj", "{80E1B92C-5E71-443F-8074-82874D7FFCE9}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dotnet", "dotnet", "{B1C2D3E4-F5A6-4789-0123-456789ABCDEF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming", "src\dotnet\TemporalDashboard.WorkflowDiagramming\TemporalDashboard.WorkflowDiagramming.csproj", "{80E1B92C-5E71-443F-8074-82874D7FFCE9}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Tests", "tests\TemporalDashboard.WorkflowDiagramming.Tests\TemporalDashboard.WorkflowDiagramming.Tests.csproj", "{E22F438B-A2AA-4DCE-84D4-F6BE6F22F52B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Tests", "tests\dotnet\TemporalDashboard.WorkflowDiagramming.Tests\TemporalDashboard.WorkflowDiagramming.Tests.csproj", "{E22F438B-A2AA-4DCE-84D4-F6BE6F22F52B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.Api", "src\TemporalDashboard.Api\TemporalDashboard.Api.csproj", "{088EB6FB-BAD6-4F85-B463-7C2C6248E581}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.Web", "src\TemporalDashboard.Web\TemporalDashboard.Web.csproj", "{7AF682E2-5170-4885-A478-4AA8375E5E78}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Build", "src\TemporalDashboard.WorkflowDiagramming.Build\TemporalDashboard.WorkflowDiagramming.Build.csproj", "{C735516C-8526-4BED-8121-DC55B85DE8B7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Build", "src\dotnet\TemporalDashboard.WorkflowDiagramming.Build\TemporalDashboard.WorkflowDiagramming.Build.csproj", "{C735516C-8526-4BED-8121-DC55B85DE8B7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Roslyn", "src\TemporalDashboard.WorkflowDiagramming.Roslyn\TemporalDashboard.WorkflowDiagramming.Roslyn.csproj", "{1AC32B49-2977-4DC0-A426-548DCCAA75A1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Roslyn", "src\dotnet\TemporalDashboard.WorkflowDiagramming.Roslyn\TemporalDashboard.WorkflowDiagramming.Roslyn.csproj", "{1AC32B49-2977-4DC0-A426-548DCCAA75A1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Roslyn.Tests", "tests\TemporalDashboard.WorkflowDiagramming.Roslyn.Tests\TemporalDashboard.WorkflowDiagramming.Roslyn.Tests.csproj", "{E0A2E0DB-DF46-4A13-910E-CCD2DBD5626A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Roslyn.Tests", "tests\dotnet\TemporalDashboard.WorkflowDiagramming.Roslyn.Tests\TemporalDashboard.WorkflowDiagramming.Roslyn.Tests.csproj", "{E0A2E0DB-DF46-4A13-910E-CCD2DBD5626A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Roslyn.Build", "src\TemporalDashboard.WorkflowDiagramming.Roslyn.Build\TemporalDashboard.WorkflowDiagramming.Roslyn.Build.csproj", "{184FA07C-8D26-48DF-8844-4CAA3A28BF04}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TemporalDashboard.WorkflowDiagramming.Roslyn.Build", "src\dotnet\TemporalDashboard.WorkflowDiagramming.Roslyn.Build\TemporalDashboard.WorkflowDiagramming.Roslyn.Build.csproj", "{184FA07C-8D26-48DF-8844-4CAA3A28BF04}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -134,13 +136,14 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{80E1B92C-5E71-443F-8074-82874D7FFCE9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{B1C2D3E4-F5A6-4789-0123-456789ABCDEF} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{80E1B92C-5E71-443F-8074-82874D7FFCE9} = {B1C2D3E4-F5A6-4789-0123-456789ABCDEF}
 		{E22F438B-A2AA-4DCE-84D4-F6BE6F22F52B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{088EB6FB-BAD6-4F85-B463-7C2C6248E581} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{7AF682E2-5170-4885-A478-4AA8375E5E78} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
-		{C735516C-8526-4BED-8121-DC55B85DE8B7} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
-		{1AC32B49-2977-4DC0-A426-548DCCAA75A1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{C735516C-8526-4BED-8121-DC55B85DE8B7} = {B1C2D3E4-F5A6-4789-0123-456789ABCDEF}
+		{1AC32B49-2977-4DC0-A426-548DCCAA75A1} = {B1C2D3E4-F5A6-4789-0123-456789ABCDEF}
 		{E0A2E0DB-DF46-4A13-910E-CCD2DBD5626A} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
-		{184FA07C-8D26-48DF-8844-4CAA3A28BF04} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{184FA07C-8D26-48DF-8844-4CAA3A28BF04} = {B1C2D3E4-F5A6-4789-0123-456789ABCDEF}
 	EndGlobalSection
 EndGlobal

@@ -60,7 +60,7 @@ Adds **TemporalDashboard.WorkflowDiagramming.Roslyn.Build** so Mermaid diagrams 
 .\scripts\install-workflow-diagramming-roslyn-build.ps1 -Project .\src\MyWorkflows\MyWorkflows.csproj -Version 1.0.0
 ```
 
-After `dotnet build`, diagrams appear under `bin/<Configuration>/net10.0/diagrams/`. See [src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md](../src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md).
+After `dotnet build`, diagrams appear under `bin/<Configuration>/net10.0/diagrams/`. See [src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md](../src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md).
 
 ---
 
@@ -72,4 +72,4 @@ If you want to call the extractor from code (not MSBuild), add:
 dotnet add package TemporalDashboard.WorkflowDiagramming.Roslyn
 ```
 
-See [src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](../src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md).
+See [src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](../src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md).

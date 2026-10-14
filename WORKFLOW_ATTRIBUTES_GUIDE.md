@@ -9,7 +9,7 @@
 | Dashboard | Upload annotated DLLs or attribute-Build diagrams zip | Upload Roslyn.Build diagrams zip |
 | Best for | Curated labels, AI/approval styling | Existing code without annotation clutter |
 
-**Prefer Roslyn?** See [src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md) and [Roslyn.Build](src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md), or the in-app **Diagramming Guide** (`/guide`). The rest of this document covers the **attribute** path in detail.
+**Prefer Roslyn?** See [src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md) and [Roslyn.Build](src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md), or the in-app **Diagramming Guide** (`/guide`). The rest of this document covers the **attribute** path in detail.
 
 ---
 
@@ -559,4 +559,4 @@ dotnet build
 # Upload bin/.../diagrams/workflow-diagrams.zip to the dashboard
 ```
 
-Details: [src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](src/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md), [Roslyn.Build](src/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md).
+Details: [src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md](src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn/README.md), [Roslyn.Build](src/dotnet/TemporalDashboard.WorkflowDiagramming.Roslyn.Build/README.md).

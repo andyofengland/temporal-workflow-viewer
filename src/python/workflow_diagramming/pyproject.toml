@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "workflow-diagramming"
+version = "0.1.0"
+description = "Extract Mermaid workflow diagrams from Temporal Python workflows"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Temporal Dashboard" }]
+
+[project.scripts]
+workflow-diagramming = "workflow_diagramming.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["workflow_diagramming*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

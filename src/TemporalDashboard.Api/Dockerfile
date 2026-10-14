@@ -8,7 +8,7 @@ WORKDIR /src
 
 # Copy csproj files and restore dependencies
 COPY ["TemporalDashboard.Api/TemporalDashboard.Api.csproj", "TemporalDashboard.Api/"]
-COPY ["TemporalDashboard.WorkflowDiagramming/TemporalDashboard.WorkflowDiagramming.csproj", "TemporalDashboard.WorkflowDiagramming/"]
+COPY ["dotnet/TemporalDashboard.WorkflowDiagramming/TemporalDashboard.WorkflowDiagramming.csproj", "dotnet/TemporalDashboard.WorkflowDiagramming/"]
 RUN dotnet restore "TemporalDashboard.Api/TemporalDashboard.Api.csproj"
 
 # Copy everything else and build

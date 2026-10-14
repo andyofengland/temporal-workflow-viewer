@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
-    <ProjectReference Include="..\TemporalDashboard.WorkflowDiagramming\TemporalDashboard.WorkflowDiagramming.csproj" />
+    <ProjectReference Include="..\dotnet\TemporalDashboard.WorkflowDiagramming\TemporalDashboard.WorkflowDiagramming.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

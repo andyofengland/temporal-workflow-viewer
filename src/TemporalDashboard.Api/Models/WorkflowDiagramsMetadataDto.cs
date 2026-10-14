@@ -3,15 +3,26 @@ using System.Text.Json.Serialization;
 namespace TemporalDashboard.Api.Models;
 
 /// <summary>
-/// DTO for workflow-diagrams-metadata.json produced by the build task.
+/// DTO for workflow-diagrams-metadata.json produced by language extractors / build tasks.
+/// Prefers <c>packageName</c>; still accepts legacy <c>assemblyName</c>.
 /// </summary>
 public sealed class WorkflowDiagramsMetadataDto
 {
+    [JsonPropertyName("packageName")]
+    public string PackageName { get; set; } = string.Empty;
+
+    /// <summary>Legacy field from older .NET packages.</summary>
     [JsonPropertyName("assemblyName")]
-    public string AssemblyName { get; set; } = string.Empty;
+    public string? AssemblyName { get; set; }
+
+    [JsonPropertyName("packageVersion")]
+    public string PackageVersion { get; set; } = string.Empty;
 
     [JsonPropertyName("assemblyVersion")]
-    public string AssemblyVersion { get; set; } = string.Empty;
+    public string? AssemblyVersion { get; set; }
+
+    [JsonPropertyName("packagePath")]
+    public string? PackagePath { get; set; }
 
     [JsonPropertyName("assemblyPath")]
     public string? AssemblyPath { get; set; }
@@ -30,6 +41,13 @@ public sealed class WorkflowDiagramsMetadataDto
 
     [JsonPropertyName("workflows")]
     public List<WorkflowEntryDto> Workflows { get; set; } = new();
+
+    /// <summary>Resolved package identity for storage / UI.</summary>
+    [JsonIgnore]
+    public string EffectivePackageName =>
+        !string.IsNullOrWhiteSpace(PackageName)
+            ? PackageName.Trim()
+            : (AssemblyName ?? string.Empty).Trim();
 }
 
 public sealed class WorkflowEntryDto

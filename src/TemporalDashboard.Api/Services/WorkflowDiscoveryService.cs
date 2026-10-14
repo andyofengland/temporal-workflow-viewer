@@ -140,8 +140,8 @@ public class WorkflowDiscoveryService
                 var meta = JsonSerializer.Deserialize<WorkflowDiagramsMetadataDto>(json);
                 if (meta?.Workflows == null || meta.Workflows.Count == 0)
                     continue;
-                var assemblyName = !string.IsNullOrWhiteSpace(meta.AssemblyName)
-                    ? meta.AssemblyName.Trim()
+                var assemblyName = !string.IsNullOrWhiteSpace(meta.EffectivePackageName)
+                    ? meta.EffectivePackageName
                     : Path.GetFileName(packagePath);
                 foreach (var w in meta.Workflows)
                 {
